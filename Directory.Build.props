@@ -1,0 +1,28 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>Verovio.NET contributors</Authors>
+    <Copyright>Copyright (c) 2026 Verovio.NET contributors</Copyright>
+    <Version>0.0.1-alpha</Version>
+  </PropertyGroup>
+
+  <!-- Package metadata for the public NuGet feed.
+       Apache-2.0 day one — the upstream Verovio engraver is LGPL-3.0; the
+       adapter (this repo) is independently licensed Apache-2.0 because it
+       links to Verovio only through a process boundary (WASM via
+       Wasmtime.NET in the Wasm backend; future P/Invoke in the Native
+       backend). Adapter code is original work. -->
+  <PropertyGroup>
+    <RepositoryUrl>https://github.com/Fuaran-Music/Verovio.NET</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/Fuaran-Music/Verovio.NET</PackageProjectUrl>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageTags>music;notation;engraving;verovio;mei;musicxml;humdrum;fsharp;dotnet</PackageTags>
+  </PropertyGroup>
+</Project>

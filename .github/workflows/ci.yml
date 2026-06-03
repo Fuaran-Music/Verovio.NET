@@ -1,0 +1,54 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET (pinned via global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: dotnet tool restore
+        run: dotnet tool restore
+
+      - name: dotnet fantomas --check
+        run: dotnet fantomas --check .
+
+      - name: dotnet restore
+        run: dotnet restore Verovio.NET.slnx
+
+      - name: dotnet build
+        run: dotnet build Verovio.NET.slnx -c Release --no-restore
+
+      - name: Expecto suite — Verovio.NET.Tests
+        run: dotnet run --no-build --project src/Verovio.NET.Tests/Verovio.NET.Tests.fsproj -c Release
+
+      - name: Sample console smoke
+        run: dotnet run --no-build --project samples/Verovio.NET.Samples.Console/Verovio.NET.Samples.Console.fsproj -c Release
+
+      - name: dotnet pack
+        run: |
+          dotnet pack src/Verovio.NET/Verovio.NET.fsproj -c Release --no-build --output ./pack-output
+          dotnet pack src/Verovio.NET.Wasm/Verovio.NET.Wasm.fsproj -c Release --no-build --output ./pack-output
+          dotnet pack src/Verovio.NET.Native/Verovio.NET.Native.fsproj -c Release --no-build --output ./pack-output
+
+      - name: Upload nupkgs
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkgs-${{ matrix.os }}
+          path: ./pack-output/*.nupkg
+          if-no-files-found: error

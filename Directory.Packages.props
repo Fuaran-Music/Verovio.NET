@@ -1,0 +1,15 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="FSharp.Core" Version="10.1.300" />
+    <PackageVersion Include="Expecto" Version="10.2.3" />
+    <!-- Wasmtime.NET — wired into Verovio.NET.Wasm by Phase 04; declared
+         here at Phase 03 so the consumer fsproj can `<PackageReference />`
+         it without a version attribute. Version pin is provisional and may
+         bump in Phase 04 once we know which Wasmtime release supports
+         the verovio-toolkit-wasm import surface cleanly. -->
+    <PackageVersion Include="Wasmtime" Version="22.0.0" />
+  </ItemGroup>
+</Project>

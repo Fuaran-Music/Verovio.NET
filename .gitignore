@@ -1,0 +1,30 @@
+# Build output
+bin/
+obj/
+output/
+
+# IDE / tooling
+.vs/
+.vscode/
+.idea/
+.ionide/
+.fake/
+
+# Per-user MSBuild and tool junk
+*.user
+*.orig
+*.fsproj.user
+*.DotSettings.user
+
+# Node (Phase 04 fetches the upstream verovio-toolkit-wasm npm package
+# as a build-time input; node_modules is transient and never committed).
+node_modules/
+dist/
+
+# Claude Code per-machine settings + worktrees
+.claude/worktrees/
+.claude/settings.local.json
+
+# Local NuGet drop folder. Verovio.NET packs into the workspace-level
+# ../local-nuget-feed/ via run.ps1, not here.
+local-nuget-feed/

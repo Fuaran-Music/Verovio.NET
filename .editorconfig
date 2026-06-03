@@ -1,0 +1,29 @@
+root = true
+
+# Verovio.NET repo editor / formatter defaults. F# 10 / .NET 10 baseline,
+# mirroring the workspace `fuaran-music/.editorconfig` byte-for-byte where
+# adapter-tier specifics don't differ.
+#
+# Fantomas owns the final F# formatting (per the workspace mandate); this
+# file deliberately does NOT override `fsharp_*` keys, so Fantomas applies
+# its defaults uniformly. The only F#-specific entry below is
+# `max_line_length` (matching Fantomas's default of 120) which informs IDE
+# display.
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.{md,json,yml,yaml}]
+indent_size = 2
+
+[*.{ps1,psm1}]
+indent_size = 4
+end_of_line = crlf
+
+[*.{fs,fsi,fsx}]
+max_line_length = 120
