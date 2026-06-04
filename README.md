@@ -1,54 +1,100 @@
 # Verovio.NET
 
-Idiomatic F# / .NET 10 bindings for the [Verovio](https://github.com/rism-digital/verovio)
+F# / .NET 10 bindings for the [Verovio](https://github.com/rism-digital/verovio)
 music engraving engine.
 
 Verovio is an LGPL-3.0 C++ library maintained by the RISM Digital Center; it
 renders [MEI](https://music-encoding.org/), MusicXML, Humdrum, PAE, and ABC
-to scalable SVG (and PDF, MIDI, etc.). Verovio.NET puts an idiomatic F# face
-on the Verovio toolkit so .NET projects can consume it as a regular NuGet
-package, without managing native artefacts or hand-rolling P/Invoke
-signatures.
+to scalable SVG and MIDI (and PDF via the upstream C++ Toolkit, though PDF
+output is not exposed by upstream's C wrapper — see [Status](#status)).
+Verovio.NET puts an idiomatic F# face on the Verovio toolkit so .NET
+projects can consume it as a regular NuGet package without managing native
+artefacts or hand-rolling P/Invoke signatures. The public API is designed
+to be ergonomic from both F# and C#.
 
 ## Status
 
-`0.0.1-alpha` — Phase 03 scaffold. Public API + `IVerovioBackend` interface
-are stable enough for downstream consumers to wire against. The WASM
-backend implementation lands in Phase 04; attempting to render with the
-`Verovio.NET.Wasm` package today throws a documented
-`NotImplementedException` describing the pending implementation.
+`0.1.0-alpha` — Phase 04 structural pivot.
 
-## Packages
+The repo now ships a **single NuGet package** (`Verovio.NET`) carrying the
+public API + P/Invoke implementation. The original Phase 03 three-package
+design (Verovio.NET + Verovio.NET.Wasm + Verovio.NET.Native) was collapsed
+in Phase 04 once the upstream WASM distribution shape was found
+incompatible with direct Wasmtime.NET hosting (it's an Emscripten build
+with the WASM base64-embedded inside a Node-only JS bundle). The native
+P/Invoke path consumes upstream's [`tools/c_wrapper.h`](https://github.com/rism-digital/verovio/blob/develop/tools/c_wrapper.h)
+shim directly — the same surface upstream's Go bindings use.
 
-The repo produces three packages:
+**What ships at 0.1.0-alpha:**
 
-| Package                | Role                                                                                  |
-| ---------------------- | ------------------------------------------------------------------------------------- |
-| `Verovio.NET`          | Public API surface. `Verovio` module, `IVerovioBackend` interface, option records, error unions. No backend implementation. |
-| `Verovio.NET.Wasm`     | Backend implementation: Wasmtime.NET hosts the upstream `verovio-toolkit-wasm` blob. The MVP-shipped backend. Implementation lands Phase 04; this package is a stub today. |
-| `Verovio.NET.Native`   | Backend implementation: P/Invoke onto a native `libverovio` build. Deferred until profiling justifies the multi-RID build matrix. |
+- Public `Toolkit` class with C#-friendly member methods (LoadData,
+  RenderToSvg, GetMei, RenderToMidi, GetElementsAtTime,
+  GetMidiValuesForElement, GetDocumentInfo, Version) — both
+  `Result`-returning and `*OrThrow` variants.
+- Closed-DU type surface (`InputFormat`, `OutputFormat`, `LoadError`,
+  `RenderError`, smart-ctor `RenderOptions` / `LoadOptions` /
+  `PdfOptions`).
+- DllImport surface against the upstream c_wrapper.h, ready to bind once
+  `libverovio.dll` is built and vendored.
+- Sample console + Expecto test suite — both compile and run; the
+  native-dispatched tests skip gracefully when `libverovio.dll` is
+  missing.
 
-Consumers depend on `Verovio.NET` plus one backend package.
+**What's deferred to a follow-up phase (also Phase 04 close-out):**
+
+- `libverovio.dll` build for win-x64 (see [Building libverovio.dll](#building-libveroviodll)).
+- The DLL itself committed under `src/Verovio.NET/runtimes/win-x64/native/`.
+- Snapshot tests against a golden SVG corpus (generated from the built DLL).
+- PDF rendering — upstream's `c_wrapper.h` doesn't expose
+  `vrvToolkit_renderToPDF`; we either extend the wrapper or post-process
+  multi-page SVG.
+- Multi-RID coverage: linux-x64, osx-arm64, linux-arm64. The CMake build
+  + CI job to produce these are tracked for the v0.x scope.
+
+## Package
+
+| Package         | Role                                                                                                |
+| --------------- | --------------------------------------------------------------------------------------------------- |
+| `Verovio.NET`   | The library. Public API + P/Invoke implementation. Ships with `libverovio.dll` vendored for win-x64. |
+
+Consumers add a single package reference. The native DLL is resolved
+automatically via .NET's `runtimes/<rid>/native` convention.
 
 ## Quickstart
+
+### F#
 
 ```fsharp
 open Verovio.NET
 
-// Pick a backend (only Wasm is shipped at Phase 04 onwards).
-let backend = Verovio.NET.Wasm.WasmBackend.create ()
-let toolkit = Verovio.create backend
+use toolkit = Toolkit.Create()
 
-// Load a small MEI snippet.
 let mei = System.IO.File.ReadAllText "c-major.mei"
-match Verovio.loadData toolkit { Format = InputFormat.MEI } mei with
+
+match toolkit.LoadData(mei) with
+| Error err -> eprintfn "Load failed: %A" err
 | Ok () ->
-    // Render page 1 to SVG.
-    match Verovio.renderToSvg toolkit RenderOptions.Default 1 with
+    match toolkit.RenderToSvg(1) with
     | Ok svg -> printfn "%s" svg
     | Error err -> eprintfn "Render failed: %A" err
-| Error err ->
-    eprintfn "Load failed: %A" err
+```
+
+### C#
+
+```csharp
+using Verovio.NET;
+
+using var toolkit = Toolkit.Create();
+
+var mei = File.ReadAllText("c-major.mei");
+
+// Throwing variants are ergonomic for C# happy paths:
+toolkit.LoadDataOrThrow(mei);
+var svg = toolkit.RenderToSvgOrThrow(1);
+Console.WriteLine(svg);
+
+// Or the Result-returning shape if you want explicit error handling.
+// You can pattern-match the Result via the FSharpResult<,> shim.
 ```
 
 ## Building
@@ -67,46 +113,89 @@ pwsh ./run.ps1 -Pack
 Requirements: .NET SDK `10.0.203` (pinned in [`global.json`](global.json)).
 PowerShell 7+ for `run.ps1`.
 
+## Building libverovio.dll
+
+The vendored DLL ships in the NuGet — most consumers never need to build
+it themselves. If you do (security audit, custom upstream version,
+contribution to this repo), see
+[`scripts/build-libverovio.ps1`](scripts/build-libverovio.ps1) and the
+build provenance documented in
+[`src/Verovio.NET/runtimes/win-x64/native/PROVENANCE.md`](src/Verovio.NET/runtimes/win-x64/native/PROVENANCE.md).
+
+Build requirements:
+- CMake 3.15+
+- Visual Studio 2022 Build Tools with the "Desktop development with C++"
+  workload (MSVC v143 + Windows 10/11 SDK)
+- `git` on PATH for the upstream clone
+
+Build command:
+```powershell
+pwsh ./scripts/build-libverovio.ps1
+```
+
+The script clones the pinned upstream tag, runs CMake + MSBuild, and
+copies the resulting DLL into `src/Verovio.NET/runtimes/win-x64/native/`.
+
+## Vendored upstream
+
+| Field           | Value                                          |
+| --------------- | ---------------------------------------------- |
+| Upstream        | https://github.com/rism-digital/verovio        |
+| Version pin     | `version-6.2.0`                                |
+| License         | LGPL-3.0-or-later                              |
+| Vendor location | `src/Verovio.NET/runtimes/win-x64/native/`     |
+
+Bump procedure: edit the version tag in `scripts/build-libverovio.ps1`,
+re-run the vendor script, run the snapshot tests, update the
+`PROVENANCE.md` row.
+
 ## Layout
 
 ```
 Verovio.NET/
 ├── src/
-│   ├── Verovio.NET/                # public API: Types, IVerovioBackend, Verovio module
-│   ├── Verovio.NET.Wasm/           # Wasmtime-backed implementation (stub at Phase 03)
-│   ├── Verovio.NET.Native/         # P/Invoke implementation (deferred)
-│   └── Verovio.NET.Tests/          # Expecto smoke suite over the public API
+│   ├── Verovio.NET/
+│   │   ├── Types.fs                     # public closed DUs + option records
+│   │   ├── Internal/Interop.fs          # DllImport bindings
+│   │   ├── Toolkit.fs                   # public Toolkit class
+│   │   └── runtimes/win-x64/native/
+│   │       ├── libverovio.dll           # vendored binary (built via scripts/)
+│   │       └── PROVENANCE.md
+│   └── Verovio.NET.Tests/               # Expecto suite over the public API
 ├── samples/
-│   └── Verovio.NET.Samples.Console/    # minimal end-to-end smoke
+│   └── Verovio.NET.Samples.Console/     # minimal end-to-end smoke
+├── scripts/
+│   └── build-libverovio.ps1             # vendor-DLL build (operator-run)
 ├── Verovio.NET.slnx
 ├── Directory.Build.props
 ├── Directory.Packages.props
 ├── nuget.config
 ├── global.json
 ├── .config/dotnet-tools.json
+├── BENCHMARKS.md
 └── run.ps1
 ```
 
 ## Design
 
-* **Backend-agnostic public API.** The `Verovio` module operates on an
-  `IVerovioBackend` interface; the Wasm and (future) Native packages each
-  provide an implementation. Consumers can substitute a custom backend
-  for testing or to swap rendering paths at runtime.
-* **F# end-to-end.** No C# bridge layer. The public surface uses closed
-  discriminated unions (`InputFormat`, `OutputFormat`), record types with
-  smart constructors for option records, and `Result<_, _>` returns where
-  failure is in-domain (malformed input, render exception). C# consumers
-  can still call the API; the F#-natural shape is the design driver.
+* **F# implementation, C#-friendly public surface.** `Toolkit` is a class
+  with member methods (`toolkit.LoadData(mei)`) rather than a module of
+  curried F# functions. Fallible operations expose both `Result`-returning
+  and `*OrThrow` variants so C# happy-paths read naturally without giving
+  up F#'s closed-DU error vocabulary for callers that want it.
+* **Closed DUs throughout.** Format identifiers are closed unions
+  (`InputFormat`, `OutputFormat`), not strings; failure modes are
+  enumerable `LoadError` / `RenderError` unions, not stringly-typed
+  messages. New cases are additive.
 * **Value-space-projected option records.** `RenderOptions` and friends
-  carry private constructors; smart-ctor `create*` functions reject
-  invalid combinations (non-positive page dimensions, scale outside the
+  carry private constructors; smart-ctor `Create` methods reject invalid
+  combinations (non-positive page dimensions, scale outside the
   Verovio-documented range, etc.) at construction time. The public
   surface cannot represent an option set that Verovio will reject at
   render time.
-* **No `obj`-typed escape hatches.** Format identifiers are closed DUs,
-  not strings; render-failure cases are an enumerable `RenderError`
-  union, not a stringly-typed message.
+* **No `obj`-typed escape hatches.** Even backend failure translation
+  passes through closed-DU cases — no string-typed catch-alls in the
+  public API.
 
 See [the upstream Verovio toolkit reference](https://book.verovio.org/toolkit-reference/toolkit-methods.html)
 for the underlying method surface this adapter wraps.
@@ -115,12 +204,14 @@ for the underlying method surface this adapter wraps.
 
 Issues and pull requests welcome. Please:
 
-* Keep the public surface backend-agnostic (no Wasm- or Native-specific
-  types leaking out of `Verovio.NET`'s public namespace).
 * Run `dotnet fantomas .` on changed F# files before committing.
 * Add Expecto coverage for new public-API behaviour under
   `src/Verovio.NET.Tests/`.
-* CI must pass on Windows and Linux runners.
+* If you touch the P/Invoke surface in `Internal/Interop.fs`, validate
+  against the upstream `tools/c_wrapper.h` signatures — they're the
+  authoritative ABI.
+* CI must pass on Windows runners (Linux + macOS runners land when those
+  RIDs ship).
 
 ## License
 
@@ -128,7 +219,7 @@ Verovio.NET is licensed under the [Apache License 2.0](LICENSE).
 
 The upstream Verovio engraver is licensed under the
 [LGPL-3.0](https://github.com/rism-digital/verovio/blob/develop/LICENSE.txt);
-the Wasm backend hosts the upstream WASM blob through a process boundary
-(Wasmtime), and the (future) Native backend will use P/Invoke. The adapter
-code in this repo is independent original work and is offered under the
-Apache 2.0 terms.
+the vendored `libverovio.dll` is dynamically linked through a
+P/Invoke boundary — the standard LGPL dynamic-linking boundary, same
+posture as SQLite.NET, libgit2sharp, etc. Adapter code in this repo is
+independent original work and is offered under the Apache 2.0 terms.

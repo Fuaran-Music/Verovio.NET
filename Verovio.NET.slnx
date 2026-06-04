@@ -1,8 +1,6 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Verovio.NET/Verovio.NET.fsproj" />
-    <Project Path="src/Verovio.NET.Wasm/Verovio.NET.Wasm.fsproj" />
-    <Project Path="src/Verovio.NET.Native/Verovio.NET.Native.fsproj" />
     <Project Path="src/Verovio.NET.Tests/Verovio.NET.Tests.fsproj" />
   </Folder>
   <Folder Name="/samples/">

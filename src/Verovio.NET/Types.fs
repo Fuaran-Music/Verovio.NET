@@ -11,16 +11,15 @@ namespace Verovio.NET
 //      additive DU case + a backend dispatch entry; never an `obj`-typed
 //      escape hatch.
 //    * Option records (`LoadOptions`, `RenderOptions`, `PdfOptions`) carry
-//      smart-constructor entry points. Invalid combinations (non-positive
-//      page dimensions, scale outside [1, 1000], etc.) are rejected at
-//      construction time, not at render time.
+//      smart-constructor entry points exposed as static members on the
+//      type itself (so C# call sites read `LoadOptions.Default` /
+//      `LoadOptions.Create(InputFormat.MEI)`, not `LoadOptionsModule.…`).
 //    * Failures are an enumerable `LoadError` / `RenderError` union, not a
 //      stringly-typed message. New failure modes are additive DU cases.
 // ============================================================================
 
 /// Score-input formats Verovio understands. Mirrors the upstream Toolkit's
-/// `InputFrom` enumeration, minus formats not surfaced through the wasm
-/// build (everything in this DU is supported by `verovio-toolkit-wasm`).
+/// `InputFrom` enumeration.
 type InputFormat =
     /// Music Encoding Initiative — Verovio's canonical native format.
     | MEI
@@ -40,8 +39,7 @@ type OutputFormat =
     | Svg
     /// Portable Document Format — multi-page paginated output.
     | Pdf
-    /// MEI — round-trip the loaded score back out as MEI (Verovio
-    /// normalises and may add layout information during the round-trip).
+    /// MEI — round-trip the loaded score back out as MEI.
     | Mei
     /// MIDI bytes — Standard MIDI File for playback / DAW import.
     | Midi
@@ -56,38 +54,43 @@ type PageOrientation =
     | Portrait
     | Landscape
 
-/// In-domain failure modes for `Verovio.loadData`. New modes are additive
+/// In-domain failure modes for `Toolkit.LoadData`. New modes are additive
 /// DU cases.
 type LoadError =
     /// Input format DU case mapped to a Verovio input format the backend
-    /// reports as unsupported (e.g. backend was built without ABC).
+    /// reports as unsupported.
     | UnsupportedInputFormat of InputFormat
     /// Verovio's parser rejected the input. Message is the parser's
     /// diagnostic string for debugging.
     | ParseFailed of message: string
+    /// The native library could not be loaded (missing libverovio.dll on
+    /// the current RID, or a load-time error from the OS loader).
+    | NativeLibraryUnavailable of message: string
     /// Backend signalled a failure that doesn't map cleanly to the cases
     /// above. Message is the backend's diagnostic for debugging.
     | BackendError of message: string
 
-/// In-domain failure modes for the various `Verovio.renderTo*` functions.
+/// In-domain failure modes for the various `Toolkit.RenderTo*` methods.
 type RenderError =
     /// Caller passed a page index outside `[1, pageCount]` (or before any
     /// document was loaded).
     | PageOutOfRange of requestedPage: int * pageCount: int
     /// Output format DU case mapped to a Verovio output Verovio reports
-    /// as unsupported (e.g. PDF disabled in the backend build).
+    /// as unsupported.
     | UnsupportedOutputFormat of OutputFormat
-    /// Caller invoked a render before successfully calling `loadData`.
+    /// Caller invoked a render before successfully calling `LoadData`.
     | NoDocumentLoaded
     /// Verovio raised an exception during the render. Message is the
     /// exception's diagnostic for debugging.
     | RenderFailed of message: string
+    /// The native library could not be loaded.
+    | NativeLibraryUnavailable of message: string
     /// Backend signalled a failure that doesn't map cleanly to the cases
     /// above. Message is the backend's diagnostic for debugging.
     | BackendError of message: string
 
-/// Options passed to `Verovio.loadData`. Constructed via `LoadOptions.create`
-/// (smart ctor) or `LoadOptions.Default`.
+/// Options passed to `Toolkit.LoadData`. Constructed via `LoadOptions.Create`
+/// or `LoadOptions.Default`.
 [<Struct>]
 type LoadOptions =
     private
@@ -95,15 +98,14 @@ type LoadOptions =
 
     member this.Format = this.Format_
 
-[<RequireQualifiedAccess>]
-module LoadOptions =
-    let create (format: InputFormat) : LoadOptions = { Format_ = format }
+    /// Construct from an input-format choice.
+    static member Create(format: InputFormat) : LoadOptions = { Format_ = format }
 
     /// Default — MEI input.
-    let Default: LoadOptions = create InputFormat.MEI
+    static member Default: LoadOptions = LoadOptions.Create(InputFormat.MEI)
 
 /// Render-time options shared by SVG + PDF outputs. Constructed via
-/// `RenderOptions.create` (smart ctor returning `Result<_, string>`) or
+/// `RenderOptions.Create` (smart ctor returning `Result<_, string>`) or
 /// `RenderOptions.Default`.
 ///
 /// Verovio's toolkit accepts a wider option surface; this record carries
@@ -133,30 +135,27 @@ type RenderOptions =
     member this.Orientation = this.Orientation_
     member this.AdjustPageHeight = this.AdjustPageHeight_
 
-[<RequireQualifiedAccess>]
-module RenderOptions =
-    /// Verovio's documented scale range, per the toolkit option
-    /// reference. `1` is the lower clamp, `1000` is the upper clamp.
-    let MinScale = 1
-    let MaxScale = 1000
+    /// Verovio's documented scale range, per the toolkit option reference.
+    static member val MinScale = 1
+    static member val MaxScale = 1000
 
     /// Verovio's default page geometry (in 0.1mm units — the toolkit's
     /// native unit).
-    let DefaultPageWidth = 2100
-    let DefaultPageHeight = 2970
-    let DefaultPageMargin = 50
-    let DefaultScale = 100
+    static member val DefaultPageWidth = 2100
+    static member val DefaultPageHeight = 2970
+    static member val DefaultPageMargin = 50
+    static member val DefaultScale = 100
 
     /// Default — A4 portrait, 100% scale, 5mm margins all round, height
     /// auto-adjusted to the rendered content.
-    let Default: RenderOptions =
-        { PageWidth_ = DefaultPageWidth
-          PageHeight_ = DefaultPageHeight
-          PageMarginTop_ = DefaultPageMargin
-          PageMarginBottom_ = DefaultPageMargin
-          PageMarginLeft_ = DefaultPageMargin
-          PageMarginRight_ = DefaultPageMargin
-          Scale_ = DefaultScale
+    static member Default: RenderOptions =
+        { PageWidth_ = RenderOptions.DefaultPageWidth
+          PageHeight_ = RenderOptions.DefaultPageHeight
+          PageMarginTop_ = RenderOptions.DefaultPageMargin
+          PageMarginBottom_ = RenderOptions.DefaultPageMargin
+          PageMarginLeft_ = RenderOptions.DefaultPageMargin
+          PageMarginRight_ = RenderOptions.DefaultPageMargin
+          Scale_ = RenderOptions.DefaultScale
           Orientation_ = Portrait
           AdjustPageHeight_ = true }
 
@@ -165,17 +164,18 @@ module RenderOptions =
     /// field encountered, rather than silently clamping (which is what
     /// Verovio itself does and is a common source of "why isn't my page
     /// the size I asked for?" surprise).
-    let create
-        (pageWidth: int)
-        (pageHeight: int)
-        (pageMarginTop: int)
-        (pageMarginBottom: int)
-        (pageMarginLeft: int)
-        (pageMarginRight: int)
-        (scale: int)
-        (orientation: PageOrientation)
-        (adjustPageHeight: bool)
-        : Result<RenderOptions, string> =
+    static member Create
+        (
+            pageWidth: int,
+            pageHeight: int,
+            pageMarginTop: int,
+            pageMarginBottom: int,
+            pageMarginLeft: int,
+            pageMarginRight: int,
+            scale: int,
+            orientation: PageOrientation,
+            adjustPageHeight: bool
+        ) : Result<RenderOptions, string> =
         if pageWidth <= 0 then
             Error(sprintf "pageWidth must be positive (got %d)" pageWidth)
         elif pageHeight <= 0 then
@@ -188,8 +188,8 @@ module RenderOptions =
             Error(sprintf "pageMarginLeft must be non-negative (got %d)" pageMarginLeft)
         elif pageMarginRight < 0 then
             Error(sprintf "pageMarginRight must be non-negative (got %d)" pageMarginRight)
-        elif scale < MinScale || scale > MaxScale then
-            Error(sprintf "scale must be in [%d, %d] (got %d)" MinScale MaxScale scale)
+        elif scale < RenderOptions.MinScale || scale > RenderOptions.MaxScale then
+            Error(sprintf "scale must be in [%d, %d] (got %d)" RenderOptions.MinScale RenderOptions.MaxScale scale)
         else
             Ok
                 { PageWidth_ = pageWidth
@@ -202,81 +202,87 @@ module RenderOptions =
                   Orientation_ = orientation
                   AdjustPageHeight_ = adjustPageHeight }
 
-    /// Smart constructor — same as `create` but throws on invalid input.
+    /// Smart constructor — same as `Create` but throws on invalid input.
     /// Ergonomic for call sites where the values are compile-time
     /// constants or already validated elsewhere; production code should
-    /// prefer `create` and pattern-match the Result.
-    let createOrThrow
-        (pageWidth: int)
-        (pageHeight: int)
-        (pageMarginTop: int)
-        (pageMarginBottom: int)
-        (pageMarginLeft: int)
-        (pageMarginRight: int)
-        (scale: int)
-        (orientation: PageOrientation)
-        (adjustPageHeight: bool)
-        : RenderOptions =
+    /// prefer `Create` and pattern-match the Result.
+    static member CreateOrThrow
+        (
+            pageWidth: int,
+            pageHeight: int,
+            pageMarginTop: int,
+            pageMarginBottom: int,
+            pageMarginLeft: int,
+            pageMarginRight: int,
+            scale: int,
+            orientation: PageOrientation,
+            adjustPageHeight: bool
+        ) : RenderOptions =
         match
-            create
-                pageWidth
-                pageHeight
-                pageMarginTop
-                pageMarginBottom
-                pageMarginLeft
-                pageMarginRight
-                scale
-                orientation
+            RenderOptions.Create(
+                pageWidth,
+                pageHeight,
+                pageMarginTop,
+                pageMarginBottom,
+                pageMarginLeft,
+                pageMarginRight,
+                scale,
+                orientation,
                 adjustPageHeight
+            )
         with
         | Ok options -> options
         | Error msg -> invalidArg "RenderOptions" msg
 
     /// Builder pattern — derive a new RenderOptions from an existing one
-    /// by overriding individual fields. Useful for "default + tweak"
-    /// ergonomics without listing every field.
-    let withScale (scale: int) (options: RenderOptions) : Result<RenderOptions, string> =
-        create
-            options.PageWidth
-            options.PageHeight
-            options.PageMarginTop
-            options.PageMarginBottom
-            options.PageMarginLeft
-            options.PageMarginRight
-            scale
-            options.Orientation
-            options.AdjustPageHeight
+    /// by overriding the scale. Returns `Error` if `scale` is outside
+    /// `[MinScale, MaxScale]`.
+    member this.WithScale(scale: int) : Result<RenderOptions, string> =
+        RenderOptions.Create(
+            this.PageWidth_,
+            this.PageHeight_,
+            this.PageMarginTop_,
+            this.PageMarginBottom_,
+            this.PageMarginLeft_,
+            this.PageMarginRight_,
+            scale,
+            this.Orientation_,
+            this.AdjustPageHeight_
+        )
 
-    let withPageSize (width: int) (height: int) (options: RenderOptions) : Result<RenderOptions, string> =
-        create
-            width
-            height
-            options.PageMarginTop
-            options.PageMarginBottom
-            options.PageMarginLeft
-            options.PageMarginRight
-            options.Scale
-            options.Orientation
-            options.AdjustPageHeight
+    /// Builder pattern — derive a new RenderOptions from an existing one
+    /// by overriding the page size. Returns `Error` if `width` or
+    /// `height` is non-positive.
+    member this.WithPageSize(width: int, height: int) : Result<RenderOptions, string> =
+        RenderOptions.Create(
+            width,
+            height,
+            this.PageMarginTop_,
+            this.PageMarginBottom_,
+            this.PageMarginLeft_,
+            this.PageMarginRight_,
+            this.Scale_,
+            this.Orientation_,
+            this.AdjustPageHeight_
+        )
 
-    let withOrientation (orientation: PageOrientation) (options: RenderOptions) : RenderOptions =
-        match
-            create
-                options.PageWidth
-                options.PageHeight
-                options.PageMarginTop
-                options.PageMarginBottom
-                options.PageMarginLeft
-                options.PageMarginRight
-                options.Scale
-                orientation
-                options.AdjustPageHeight
-        with
-        | Ok r -> r
-        | Error _ -> options // unreachable: orientation can't invalidate
+    /// Builder pattern — derive a new RenderOptions from an existing one
+    /// by overriding the orientation. Cannot fail.
+    member this.WithOrientation(orientation: PageOrientation) : RenderOptions =
+        // Field-by-field copy rather than `{ this with ... }` — F# rejects
+        // copy-and-update on `byref<struct>` (FS3232).
+        { PageWidth_ = this.PageWidth_
+          PageHeight_ = this.PageHeight_
+          PageMarginTop_ = this.PageMarginTop_
+          PageMarginBottom_ = this.PageMarginBottom_
+          PageMarginLeft_ = this.PageMarginLeft_
+          PageMarginRight_ = this.PageMarginRight_
+          Scale_ = this.Scale_
+          Orientation_ = orientation
+          AdjustPageHeight_ = this.AdjustPageHeight_ }
 
 /// PDF-specific render options. PDF output is multi-page; SVG output is
-/// per-page. Constructed via `PdfOptions.create` or `PdfOptions.Default`.
+/// per-page. Constructed via `PdfOptions.Create` or `PdfOptions.Default`.
 [<Struct>]
 type PdfOptions =
     private
@@ -286,21 +292,28 @@ type PdfOptions =
     member this.Base = this.Base_
     member this.EmbedFonts = this.EmbedFonts_
 
-[<RequireQualifiedAccess>]
-module PdfOptions =
-    let create (baseOptions: RenderOptions) (embedFonts: bool) : PdfOptions =
+    /// Construct from base render options and an embed-fonts flag.
+    static member Create(baseOptions: RenderOptions, embedFonts: bool) : PdfOptions =
         { Base_ = baseOptions
           EmbedFonts_ = embedFonts }
 
     /// Default — A4 portrait, embedded fonts (so PDFs render identically
     /// on machines without the Verovio glyph fonts installed).
-    let Default: PdfOptions = create RenderOptions.Default true
+    static member Default: PdfOptions = PdfOptions.Create(RenderOptions.Default, true)
 
 /// A loaded document's structural summary. Returned by
-/// `Verovio.getDocumentInfo` once a document is loaded.
+/// `Toolkit.GetDocumentInfo` once a document is loaded.
 [<Struct>]
 type DocumentInfo =
     { PageCount: int
       // Future fields are additive — score-level metadata (title,
       // composer, etc.) lands here when the public-API surface grows.
       ScoreTimeInMs: int }
+
+/// MIDI realisation of a single Verovio element. Returned by
+/// `Toolkit.GetMidiValuesForElement`.
+[<Struct>]
+type MidiValues =
+    { Pitch: byte
+      Duration: int
+      Time: int }

@@ -16,10 +16,14 @@ output/
 *.fsproj.user
 *.DotSettings.user
 
-# Node (Phase 04 fetches the upstream verovio-toolkit-wasm npm package
-# as a build-time input; node_modules is transient and never committed).
+# Node modules — transient, never committed.
 node_modules/
 dist/
+
+# Upstream verovio C++ clone — gitignored by Phase 04 build script.
+# scripts/build-libverovio.ps1 clones rism-digital/verovio in here at the
+# pinned tag, builds, and copies the DLL into runtimes/win-x64/native/.
+external/
 
 # Claude Code per-machine settings + worktrees
 .claude/worktrees/

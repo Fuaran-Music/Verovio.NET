@@ -1,170 +1,205 @@
 module Verovio.NET.Tests.VerovioTests
 
 open System
+open System.IO
 open Expecto
 open Verovio.NET
-open Verovio.NET.Wasm
-open Verovio.NET.Native
+open Verovio.NET.Internal
 
 // ============================================================================
-//  Public-API smoke suite for the `Verovio` module. The Wasm + Native
-//  backends are stubs at Phase 03 (every operation throws
-//  NotImplementedException); this suite exercises the wrappers' OWN
-//  pre-backend validation logic (null / empty input checks, negative
-//  index / time guards, etc.) so that the public API's contract is
-//  pinned independently of any backend's behaviour.
+//  Public-API tests for `Toolkit`. Two cohorts:
 //
-//  Backend-dispatched paths are exercised by Phase 04's snapshot suite
-//  once the Wasm backend lands.
+//    1. Native-library availability probe — establishes whether
+//       libverovio is loadable in the current test run. Drives whether
+//       the backend-dispatched tests below run or skip.
+//
+//    2. Backend-dispatched tests — exercise the real native rendering
+//       path. Marked `skip` when libverovio is unavailable (gating
+//       allows the suite to pass on a fresh checkout where the DLL
+//       hasn't been built yet).
+//
+//  Phase 04's native pivot replaces the Phase 03 stub-backend suite
+//  (NotImplementedException assertions) with real-render assertions.
 // ============================================================================
 
-let private wasmStubTests =
+let private nativeAvailable =
+    match Interop.probeAvailability () with
+    | Ok() -> true
+    | Error _ -> false
+
+let private skipUnlessNative (name: string) (body: unit -> unit) =
+    if nativeAvailable then
+        test name { body () }
+    else
+        ptest name { body () } // pending — surfaces in the test report
+
+let private fixturePath name =
+    Path.Combine(AppContext.BaseDirectory, "fixtures", name)
+
+let private readFixture name = File.ReadAllText(fixturePath name)
+
+let private nativeProbeTests =
     testList
-        "Wasm stub backend"
-        [ test "WasmBackend.create returns an IVerovioBackend with name 'Wasm (stub)'" {
-              use backend = WasmBackend.create ()
-              Expect.equal backend.Name "Wasm (stub)" "Stub identifies itself as Wasm (stub)"
+        "Native library probe"
+        [ test "Interop.probeAvailability returns either Ok or NativeLibraryUnavailable Error" {
+              match Interop.probeAvailability () with
+              | Ok() -> ()
+              | Error msg -> Expect.isNonEmpty msg "Error case must carry a diagnostic message"
           }
 
-          test "Wrapping a Wasm stub in a Toolkit surfaces the backend name" {
-              let backend = WasmBackend.create ()
-              use toolkit = Verovio.create backend
-              Expect.equal (Verovio.backendName toolkit) "Wasm (stub)" "Toolkit forwards backend name"
-          }
-
-          test "Verovio.loadData on a Wasm stub throws NotImplementedException for valid input" {
-              let backend = WasmBackend.create ()
-              use toolkit = Verovio.create backend
-
-              Expect.throwsT<NotImplementedException>
-                  (fun () -> Verovio.loadData toolkit LoadOptions.Default "<mei/>" |> ignore)
-                  "Wasm stub must throw NotImplementedException at Phase 03"
-          } ]
-
-let private nativeStubTests =
-    testList
-        "Native stub backend"
-        [ test "NativeBackend.create returns an IVerovioBackend with name 'Native (stub)'" {
-              use backend = NativeBackend.create ()
-              Expect.equal backend.Name "Native (stub)" "Stub identifies itself as Native (stub)"
-          }
-
-          test "Verovio.loadData on a Native stub throws NotImplementedException" {
-              let backend = NativeBackend.create ()
-              use toolkit = Verovio.create backend
-
-              Expect.throwsT<NotImplementedException>
-                  (fun () -> Verovio.loadData toolkit LoadOptions.Default "<mei/>" |> ignore)
-                  "Native stub must throw NotImplementedException (deferred)"
+          test "Toolkit.Create either succeeds or raises VerovioException with NativeLibraryUnavailable" {
+              try
+                  use _toolkit = Toolkit.Create()
+                  ()
+              with :? VerovioException as ex ->
+                  match ex.InnerError with
+                  | :? LoadError as LoadError.NativeLibraryUnavailable _ -> ()
+                  | other -> failtestf "Expected NativeLibraryUnavailable, got %A" other
           } ]
 
 let private inputValidationTests =
-    // These tests use a Wasm stub backend, but the assertion is that the
-    // `Verovio` module's own pre-backend validation rejects the input
-    // BEFORE dispatching, so no NotImplementedException is raised — the
-    // module returns `Error _` directly. That contract is what we're
-    // pinning here.
+    // Pre-backend validation — exercises Toolkit's own input-validation
+    // logic. Requires a working Toolkit instance (so gated on native
+    // availability), but the assertions are about the wrapper's
+    // contract, not the backend's behaviour.
     testList
-        "Verovio module input validation (pre-backend)"
-        [ test "loadData rejects null input with ParseFailed" {
-              let backend = WasmBackend.create ()
-              use toolkit = Verovio.create backend
-              let r = Verovio.loadData toolkit LoadOptions.Default null
+        "Toolkit input validation (pre-backend dispatch)"
+        [ skipUnlessNative "LoadData rejects null input with ParseFailed" (fun () ->
+              use toolkit = Toolkit.Create()
+              let r = toolkit.LoadData(null)
 
               match r with
               | Error(LoadError.ParseFailed _) -> ()
-              | Ok() -> failtest "null input must not succeed"
-              | Error other -> failtestf "expected ParseFailed; got %A" other
-          }
+              | other -> failtestf "expected ParseFailed; got %A" other)
 
-          test "loadData rejects empty input with ParseFailed" {
-              let backend = WasmBackend.create ()
-              use toolkit = Verovio.create backend
-              let r = Verovio.loadData toolkit LoadOptions.Default ""
+          skipUnlessNative "LoadData rejects empty input with ParseFailed" (fun () ->
+              use toolkit = Toolkit.Create()
+              let r = toolkit.LoadData("")
 
               match r with
               | Error(LoadError.ParseFailed _) -> ()
-              | _ -> failtest "empty input must fail with ParseFailed"
-          }
+              | other -> failtestf "expected ParseFailed; got %A" other)
 
-          test "loadData rejects whitespace-only input with ParseFailed" {
-              let backend = WasmBackend.create ()
-              use toolkit = Verovio.create backend
-              let r = Verovio.loadData toolkit LoadOptions.Default "   \n\t  "
+          skipUnlessNative "LoadData rejects whitespace-only input with ParseFailed" (fun () ->
+              use toolkit = Toolkit.Create()
+              let r = toolkit.LoadData("   \n\t  ")
 
               match r with
               | Error(LoadError.ParseFailed _) -> ()
-              | _ -> failtest "whitespace input must fail with ParseFailed"
-          }
+              | other -> failtestf "expected ParseFailed; got %A" other)
 
-          test "renderToSvg rejects pageNumber < 1 with PageOutOfRange" {
-              let backend = WasmBackend.create ()
-              use toolkit = Verovio.create backend
-              let r = Verovio.renderToSvg toolkit RenderOptions.Default 0
+          skipUnlessNative "RenderToSvg rejects pageNumber < 1 with PageOutOfRange" (fun () ->
+              use toolkit = Toolkit.Create()
+              let r = toolkit.RenderToSvg(0)
 
               match r with
-              | Error(RenderError.PageOutOfRange(0, 0)) -> ()
-              | _ -> failtestf "expected PageOutOfRange(0,0); got %A" r
-          }
+              | Error(RenderError.PageOutOfRange(0, _)) -> ()
+              | other -> failtestf "expected PageOutOfRange; got %A" other)
 
-          test "renderToSvg rejects negative pageNumber with PageOutOfRange" {
-              let backend = WasmBackend.create ()
-              use toolkit = Verovio.create backend
-              let r = Verovio.renderToSvg toolkit RenderOptions.Default -5
+          skipUnlessNative "RenderToSvg rejects negative pageNumber" (fun () ->
+              use toolkit = Toolkit.Create()
+              let r = toolkit.RenderToSvg(-5)
 
               match r with
-              | Error(RenderError.PageOutOfRange(-5, 0)) -> ()
-              | _ -> failtestf "expected PageOutOfRange(-5,0); got %A" r
-          }
+              | Error(RenderError.PageOutOfRange(-5, _)) -> ()
+              | other -> failtestf "expected PageOutOfRange; got %A" other)
 
-          test "getElementsAtTime rejects negative timeMs" {
-              let backend = WasmBackend.create ()
-              use toolkit = Verovio.create backend
-              let r = Verovio.getElementsAtTime toolkit -1
+          skipUnlessNative "GetElementsAtTime rejects negative timeMs" (fun () ->
+              use toolkit = Toolkit.Create()
+              let r = toolkit.GetElementsAtTime(-1)
 
               match r with
               | Error(RenderError.RenderFailed _) -> ()
-              | _ -> failtestf "expected RenderFailed for negative time; got %A" r
-          }
+              | other -> failtestf "expected RenderFailed; got %A" other)
 
-          test "getMidiValuesForElement rejects empty elementId" {
-              let backend = WasmBackend.create ()
-              use toolkit = Verovio.create backend
-              let r = Verovio.getMidiValuesForElement toolkit ""
+          skipUnlessNative "GetMidiValuesForElement rejects null elementId" (fun () ->
+              use toolkit = Toolkit.Create()
+              let r = toolkit.GetMidiValuesForElement(null)
 
               match r with
               | Error(RenderError.RenderFailed _) -> ()
-              | _ -> failtestf "expected RenderFailed for empty id; got %A" r
-          }
+              | other -> failtestf "expected RenderFailed; got %A" other)
 
-          test "getMidiValuesForElement rejects whitespace elementId" {
-              let backend = WasmBackend.create ()
-              use toolkit = Verovio.create backend
-              let r = Verovio.getMidiValuesForElement toolkit "  "
+          skipUnlessNative "GetMidiValuesForElement rejects empty elementId" (fun () ->
+              use toolkit = Toolkit.Create()
+              let r = toolkit.GetMidiValuesForElement("")
 
               match r with
               | Error(RenderError.RenderFailed _) -> ()
-              | _ -> failtestf "expected RenderFailed for whitespace id; got %A" r
-          } ]
+              | other -> failtestf "expected RenderFailed; got %A" other) ]
+
+let private renderingTests =
+    testList
+        "Toolkit rendering (native dispatch)"
+        [ skipUnlessNative "Loaded MEI renders to non-empty SVG" (fun () ->
+              use toolkit = Toolkit.Create()
+              let mei = readFixture "c-major.mei"
+
+              match toolkit.LoadData(mei) with
+              | Error err -> failtestf "LoadData failed: %A" err
+              | Ok() ->
+                  match toolkit.RenderToSvg(1) with
+                  | Error err -> failtestf "RenderToSvg failed: %A" err
+                  | Ok svg ->
+                      Expect.isGreaterThan svg.Length 100 "SVG should be at least 100 bytes"
+                      Expect.stringContains svg "<svg" "SVG should contain an <svg> element"
+                      Expect.stringContains svg "</svg>" "SVG should close the <svg> element")
+
+          skipUnlessNative "RenderToSvg without LoadData returns NoDocumentLoaded" (fun () ->
+              use toolkit = Toolkit.Create()
+              let r = toolkit.RenderToSvg(1)
+
+              match r with
+              | Error RenderError.NoDocumentLoaded -> ()
+              | other -> failtestf "expected NoDocumentLoaded; got %A" other)
+
+          skipUnlessNative "GetDocumentInfo reports page count after LoadData" (fun () ->
+              use toolkit = Toolkit.Create()
+              let mei = readFixture "c-major.mei"
+
+              match toolkit.LoadData(mei) with
+              | Error err -> failtestf "LoadData failed: %A" err
+              | Ok() ->
+                  match toolkit.GetDocumentInfo() with
+                  | Error err -> failtestf "GetDocumentInfo failed: %A" err
+                  | Ok info -> Expect.isGreaterThan info.PageCount 0 "Loaded document should have at least one page")
+
+          skipUnlessNative "RenderToPdf returns UnsupportedOutputFormat (deferred at Phase 04)" (fun () ->
+              use toolkit = Toolkit.Create()
+              let mei = readFixture "c-major.mei"
+              toolkit.LoadData(mei) |> ignore
+
+              match toolkit.RenderToPdf() with
+              | Error(RenderError.UnsupportedOutputFormat OutputFormat.Pdf) -> ()
+              | other -> failtestf "expected UnsupportedOutputFormat Pdf; got %A" other)
+
+          skipUnlessNative "Two Toolkits render the same MEI to identical SVG" (fun () ->
+              use toolkit1 = Toolkit.Create()
+              use toolkit2 = Toolkit.Create()
+              let mei = readFixture "c-major.mei"
+              toolkit1.LoadData(mei) |> ignore
+              toolkit2.LoadData(mei) |> ignore
+
+              match toolkit1.RenderToSvg(1), toolkit2.RenderToSvg(1) with
+              | Ok svg1, Ok svg2 -> Expect.equal svg1 svg2 "Identical input must yield identical SVG"
+              | r1, r2 -> failtestf "expected two Ok renders; got %A and %A" r1 r2) ]
 
 let private disposalTests =
     testList
         "Toolkit disposal"
-        [ test "Disposing a toolkit disposes the backend" {
-              let backend = WasmBackend.create ()
-              let toolkit = Verovio.create backend
-              // The stub backend's Dispose is a no-op; we're asserting
-              // the wiring compiles + runs cleanly, not the side effect.
-              Verovio.dispose toolkit
-          }
+        [ skipUnlessNative "Disposed toolkit throws ObjectDisposedException on use" (fun () ->
+              let toolkit = Toolkit.Create()
+              (toolkit :> IDisposable).Dispose()
 
-          test "`use` binding disposes on scope exit" {
+              Expect.throwsT<ObjectDisposedException>
+                  (fun () -> toolkit.LoadData("<mei/>") |> ignore)
+                  "Using a disposed toolkit must throw ObjectDisposedException")
+
+          skipUnlessNative "`use` binding disposes on scope exit" (fun () ->
               do
-                  let backend = WasmBackend.create ()
-                  use _toolkit = Verovio.create backend
-                  ()
-          } ]
+                  use _toolkit = Toolkit.Create()
+                  ()) ]
 
 [<Tests>]
 let allVerovioTests =
-    testList "Verovio" [ wasmStubTests; nativeStubTests; inputValidationTests; disposalTests ]
+    testList "Verovio" [ nativeProbeTests; inputValidationTests; renderingTests; disposalTests ]

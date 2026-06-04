@@ -93,9 +93,7 @@ $testProjects = @(
 )
 $sampleProject = "samples/Verovio.NET.Samples.Console/Verovio.NET.Samples.Console.fsproj"
 $packageProjects = @(
-    "src/Verovio.NET/Verovio.NET.fsproj",
-    "src/Verovio.NET.Wasm/Verovio.NET.Wasm.fsproj",
-    "src/Verovio.NET.Native/Verovio.NET.Native.fsproj"
+    "src/Verovio.NET/Verovio.NET.fsproj"
 )
 $localFeed = Join-Path (Split-Path $PSScriptRoot -Parent) 'local-nuget-feed'
 

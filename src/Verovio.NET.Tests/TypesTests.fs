@@ -7,14 +7,17 @@ open Verovio.NET
 //  Public-type smoke suite. Covers:
 //    1. RenderOptions smart-ctor value-space projection — invalid
 //       combinations are rejected at construction time.
-//    2. RenderOptions.Default round-trips through `withScale` /
-//       `withPageSize` cleanly.
+//    2. RenderOptions.Default round-trips through `WithScale` /
+//       `WithPageSize` cleanly.
 //    3. LoadOptions / PdfOptions constructor coverage.
 //    4. Closed-DU exhaustiveness — pattern-matching every
 //       InputFormat / OutputFormat / PageOrientation case stays
 //       exhaustive (compile-time, but a runtime assertion protects
 //       against future additions that would silently widen the public
 //       surface).
+//
+//  Phase 04 — static-member API surface (LoadOptions.Create etc.); the
+//  Phase 03 module-function form was retired for C#-friendliness.
 // ============================================================================
 
 let private renderOptionsTests =
@@ -29,75 +32,79 @@ let private renderOptionsTests =
               Expect.isTrue d.AdjustPageHeight "Default adjusts page height to content"
           }
 
-          test "create rejects non-positive pageWidth" {
-              let r = RenderOptions.create 0 2970 50 50 50 50 100 Portrait true
+          test "Create rejects non-positive pageWidth" {
+              let r = RenderOptions.Create(0, 2970, 50, 50, 50, 50, 100, Portrait, true)
               Expect.isError r "pageWidth = 0 must fail"
           }
 
-          test "create rejects negative pageWidth" {
-              let r = RenderOptions.create -1 2970 50 50 50 50 100 Portrait true
+          test "Create rejects negative pageWidth" {
+              let r = RenderOptions.Create(-1, 2970, 50, 50, 50, 50, 100, Portrait, true)
               Expect.isError r "pageWidth = -1 must fail"
           }
 
-          test "create rejects non-positive pageHeight" {
-              let r = RenderOptions.create 2100 0 50 50 50 50 100 Portrait true
+          test "Create rejects non-positive pageHeight" {
+              let r = RenderOptions.Create(2100, 0, 50, 50, 50, 50, 100, Portrait, true)
               Expect.isError r "pageHeight = 0 must fail"
           }
 
-          test "create rejects negative margin" {
-              let r = RenderOptions.create 2100 2970 -1 50 50 50 100 Portrait true
+          test "Create rejects negative margin" {
+              let r = RenderOptions.Create(2100, 2970, -1, 50, 50, 50, 100, Portrait, true)
               Expect.isError r "pageMarginTop = -1 must fail"
           }
 
-          test "create accepts zero margin (touching the page edge is legal)" {
-              let r = RenderOptions.create 2100 2970 0 0 0 0 100 Portrait true
+          test "Create accepts zero margin (touching the page edge is legal)" {
+              let r = RenderOptions.Create(2100, 2970, 0, 0, 0, 0, 100, Portrait, true)
               Expect.isOk r "zero-margin renders are legitimate (full-bleed)"
           }
 
-          test "create rejects scale below MinScale" {
+          test "Create rejects scale below MinScale" {
               let r =
-                  RenderOptions.create 2100 2970 50 50 50 50 (RenderOptions.MinScale - 1) Portrait true
+                  RenderOptions.Create(2100, 2970, 50, 50, 50, 50, RenderOptions.MinScale - 1, Portrait, true)
 
               Expect.isError r "scale below the documented minimum must fail"
           }
 
-          test "create rejects scale above MaxScale" {
+          test "Create rejects scale above MaxScale" {
               let r =
-                  RenderOptions.create 2100 2970 50 50 50 50 (RenderOptions.MaxScale + 1) Portrait true
+                  RenderOptions.Create(2100, 2970, 50, 50, 50, 50, RenderOptions.MaxScale + 1, Portrait, true)
 
               Expect.isError r "scale above the documented maximum must fail"
           }
 
-          test "create accepts boundary scales (MinScale, MaxScale)" {
+          test "Create accepts boundary scales (MinScale, MaxScale)" {
               let lo =
-                  RenderOptions.create 2100 2970 50 50 50 50 RenderOptions.MinScale Portrait true
+                  RenderOptions.Create(2100, 2970, 50, 50, 50, 50, RenderOptions.MinScale, Portrait, true)
 
               let hi =
-                  RenderOptions.create 2100 2970 50 50 50 50 RenderOptions.MaxScale Portrait true
+                  RenderOptions.Create(2100, 2970, 50, 50, 50, 50, RenderOptions.MaxScale, Portrait, true)
 
               Expect.isOk lo "MinScale is inclusive"
               Expect.isOk hi "MaxScale is inclusive"
           }
 
-          test "createOrThrow returns the same record as create on valid input" {
+          test "CreateOrThrow returns the same record as Create on valid input" {
               let viaResult =
-                  match RenderOptions.create 1500 2100 30 30 30 30 75 Landscape false with
+                  match RenderOptions.Create(1500, 2100, 30, 30, 30, 30, 75, Landscape, false) with
                   | Ok r -> r
                   | Error msg -> failtest msg
 
-              let viaThrow = RenderOptions.createOrThrow 1500 2100 30 30 30 30 75 Landscape false
-              Expect.equal viaThrow viaResult "createOrThrow and create produce identical records on valid input"
+              let viaThrow =
+                  RenderOptions.CreateOrThrow(1500, 2100, 30, 30, 30, 30, 75, Landscape, false)
+
+              Expect.equal viaThrow viaResult "CreateOrThrow and Create produce identical records on valid input"
           }
 
-          test "createOrThrow raises invalidArg on invalid input" {
+          test "CreateOrThrow raises invalidArg on invalid input" {
               Expect.throws
-                  (fun () -> RenderOptions.createOrThrow 0 2970 50 50 50 50 100 Portrait true |> ignore)
-                  "createOrThrow must throw on invalid input"
+                  (fun () ->
+                      RenderOptions.CreateOrThrow(0, 2970, 50, 50, 50, 50, 100, Portrait, true)
+                      |> ignore)
+                  "CreateOrThrow must throw on invalid input"
           }
 
-          test "withScale preserves other fields" {
+          test "WithScale preserves other fields" {
               let updated =
-                  match RenderOptions.withScale 50 RenderOptions.Default with
+                  match RenderOptions.Default.WithScale(50) with
                   | Ok r -> r
                   | Error msg -> failtest msg
 
@@ -107,14 +114,14 @@ let private renderOptionsTests =
               Expect.equal updated.Orientation RenderOptions.Default.Orientation "Orientation preserved"
           }
 
-          test "withScale rejects out-of-range scale" {
-              let r = RenderOptions.withScale (RenderOptions.MaxScale + 1) RenderOptions.Default
-              Expect.isError r "withScale must validate just like create"
+          test "WithScale rejects out-of-range scale" {
+              let r = RenderOptions.Default.WithScale(RenderOptions.MaxScale + 1)
+              Expect.isError r "WithScale must validate just like Create"
           }
 
-          test "withPageSize updates both dimensions" {
+          test "WithPageSize updates both dimensions" {
               let updated =
-                  match RenderOptions.withPageSize 1500 2100 RenderOptions.Default with
+                  match RenderOptions.Default.WithPageSize(1500, 2100) with
                   | Ok r -> r
                   | Error msg -> failtest msg
 
@@ -122,8 +129,8 @@ let private renderOptionsTests =
               Expect.equal updated.PageHeight 2100 "PageHeight updated"
           }
 
-          test "withOrientation preserves all other fields (cannot invalidate)" {
-              let updated = RenderOptions.withOrientation Landscape RenderOptions.Default
+          test "WithOrientation preserves all other fields (cannot invalidate)" {
+              let updated = RenderOptions.Default.WithOrientation(Landscape)
               Expect.equal updated.Orientation Landscape "Orientation updated"
               Expect.equal updated.PageWidth RenderOptions.Default.PageWidth "PageWidth preserved"
           } ]
@@ -131,8 +138,8 @@ let private renderOptionsTests =
 let private loadOptionsTests =
     testList
         "LoadOptions"
-        [ test "create captures Format" {
-              let opts = LoadOptions.create InputFormat.MusicXML
+        [ test "Create captures Format" {
+              let opts = LoadOptions.Create(InputFormat.MusicXML)
               Expect.equal opts.Format InputFormat.MusicXML "Format captured"
           }
 
@@ -141,8 +148,8 @@ let private loadOptionsTests =
 let private pdfOptionsTests =
     testList
         "PdfOptions"
-        [ test "create captures base + embedFonts" {
-              let pdf = PdfOptions.create RenderOptions.Default false
+        [ test "Create captures base + embedFonts" {
+              let pdf = PdfOptions.Create(RenderOptions.Default, false)
               Expect.equal pdf.Base RenderOptions.Default "Base options captured"
               Expect.isFalse pdf.EmbedFonts "EmbedFonts captured"
           }
@@ -150,11 +157,8 @@ let private pdfOptionsTests =
           test "Default embeds fonts" { Expect.isTrue PdfOptions.Default.EmbedFonts "Default PDF embeds fonts" } ]
 
 let private exhaustivenessTests =
-    // These tests are compile-time exhaustiveness checks dressed up as
-    // runtime tests — they fail only if a new DU case is added without
-    // updating the match. The runtime assertion is `true` for every
-    // current case; the compile-time win is the warning-as-error if a
-    // new case is added.
+    // Compile-time exhaustiveness checks dressed up as runtime tests —
+    // they fail only if a new DU case is added without updating the match.
     let inputFormatName (f: InputFormat) =
         match f with
         | InputFormat.MEI -> "MEI"
@@ -188,7 +192,7 @@ let private exhaustivenessTests =
                     InputFormat.ABC ]
                   |> List.map inputFormatName
 
-              Expect.equal (List.length names) 5 "Five InputFormat cases at Phase 03"
+              Expect.equal (List.length names) 5 "Five InputFormat cases at Phase 04"
               Expect.allEqual (names |> List.map (fun n -> n.Length > 0)) true "Every case yields a non-empty name"
           }
 
@@ -202,7 +206,7 @@ let private exhaustivenessTests =
                     OutputFormat.Humdrum ]
                   |> List.map outputFormatName
 
-              Expect.equal (List.length names) 6 "Six OutputFormat cases at Phase 03"
+              Expect.equal (List.length names) 6 "Six OutputFormat cases at Phase 04"
           }
 
           test "Every PageOrientation case has a name" {

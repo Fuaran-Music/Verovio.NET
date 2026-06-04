@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <PackageId>Verovio.NET</PackageId>
-    <Description>Idiomatic F# / .NET 10 public API for the Verovio music engraving engine. Backend-agnostic: depends on Verovio.NET.Wasm or Verovio.NET.Native for an implementation.</Description>
+    <Description>F# / .NET 10 bindings for the Verovio music engraving engine. Single-package design — public API + native P/Invoke implementation in one NuGet. Ships with libverovio.dll vendored for win-x64; other RIDs added in subsequent phases.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
@@ -12,8 +12,27 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Types.fs" />
-    <Compile Include="IVerovioBackend.fs" />
-    <Compile Include="Verovio.fs" />
+    <Compile Include="Internal\Interop.fs" />
+    <Compile Include="Toolkit.fs" />
+  </ItemGroup>
+  <!-- Vendored libverovio.dll (LGPL-3.0). The runtimes/<rid>/native
+       convention is how .NET NuGet packages ship native runtime assets;
+       the .NET runtime resolves the appropriate RID's DLL at load time.
+
+       PROVENANCE.md alongside the DLL documents the upstream version
+       pin + build provenance. Other RIDs (linux-x64, osx-arm64,
+       linux-arm64) land in subsequent phases when consumers demand
+       them. -->
+  <ItemGroup>
+    <None Include="runtimes\win-x64\native\libverovio.dll"
+          Pack="true"
+          PackagePath="runtimes\win-x64\native\libverovio.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('runtimes\win-x64\native\libverovio.dll')" />
+    <None Include="runtimes\win-x64\native\PROVENANCE.md"
+          Pack="true"
+          PackagePath="runtimes\win-x64\native\PROVENANCE.md"
+          Condition="Exists('runtimes\win-x64\native\PROVENANCE.md')" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
