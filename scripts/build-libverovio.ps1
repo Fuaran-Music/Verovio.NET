@@ -77,7 +77,11 @@ the 'Desktop development with C++' workload:
     exit 1
 }
 
-$vsInstallPath = & $vswhere -latest `
+# `-prerelease` so VS 2026 Insiders (channelId VisualStudio.18.Preview) is
+# discovered alongside the GA channel. `-latest` then picks the highest
+# version that has the C++ workload — typically the prerelease install when
+# both are present.
+$vsInstallPath = & $vswhere -latest -prerelease `
     -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
     -property installationPath
 if (-not $vsInstallPath) {
@@ -93,6 +97,26 @@ your install. Or use the BuildTools edition:
     exit 1
 }
 Write-Host "  VS install: $vsInstallPath"
+
+# Resolve the matching CMake generator from the major-version digit. VS 2022
+# uses generator "Visual Studio 17 2022"; VS 2026 (Insiders, channel
+# VisualStudio.18.Preview) uses "Visual Studio 18 2026". Both are accepted
+# by CMake 3.31+; the workspace's pinned CMake 4.x release supports both
+# unconditionally.
+$vsVersion = & $vswhere -latest -prerelease `
+    -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+    -property installationVersion
+$vsMajor = [int]($vsVersion -split '\.')[0]
+$cmakeGenerator =
+    switch ($vsMajor) {
+        17 { "Visual Studio 17 2022" }
+        18 { "Visual Studio 18 2026" }
+        default {
+            Write-Error "Unsupported VS major version $vsMajor (installationVersion=$vsVersion). Extend the switch in build-libverovio.ps1."
+            exit 1
+        }
+    }
+Write-Host "  VS version:   $vsVersion (generator: $cmakeGenerator)"
 
 # ── Clone upstream ───────────────────────────────────────────────────────
 
@@ -130,10 +154,20 @@ Write-Step "CMake configure"
 Push-Location $verovioDir
 try {
     # Verovio's CMakeLists lives at cmake/CMakeLists.txt, not the repo root.
+    #
+    # `-DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON` is **required** on Windows.
+    # Upstream Verovio's cmake/CMakeLists.txt does
+    # `add_definitions(-DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS)`, which is wrong:
+    # CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS is a CMake variable, not a
+    # preprocessor define. Without the correct syntax, the resulting DLL
+    # has zero exported symbols and every P/Invoke call fails with
+    # EntryPointNotFoundException. Passing it on the command line here
+    # sets the CMake variable correctly without patching upstream.
     cmake -B $buildDir -S "cmake" `
         -DBUILD_AS_LIBRARY=ON `
         -DCMAKE_BUILD_TYPE=Release `
-        -G "Visual Studio 17 2022" `
+        -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON `
+        -G $cmakeGenerator `
         -A x64
     if ($LASTEXITCODE -ne 0) { throw "CMake configure failed (exit $LASTEXITCODE)" }
 }

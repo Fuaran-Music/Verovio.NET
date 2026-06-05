@@ -33,6 +33,19 @@
           Pack="true"
           PackagePath="runtimes\win-x64\native\PROVENANCE.md"
           Condition="Exists('runtimes\win-x64\native\PROVENANCE.md')" />
+    <!-- Verovio's font + glyph-bounding-box resources (Bravura, Leland,
+         Leipzig, Petaluma, Gootville, text). Without these on disk,
+         Toolkit.LoadData fails with the "font resources are not
+         available" error. We vendor the upstream `data/` tree as a
+         sibling to libverovio.dll under `verovio-data/`; Toolkit.Create
+         auto-resolves the path from AppContext.BaseDirectory at
+         runtime. Recursive include keeps every subfolder
+         (Bravura/, Gootville/, Leipzig/, Leland/, Petaluma/, text/)
+         in lock-step with upstream. -->
+    <None Include="runtimes\win-x64\native\verovio-data\**\*"
+          Pack="true"
+          PackagePath="runtimes\win-x64\native\verovio-data\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

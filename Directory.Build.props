@@ -9,7 +9,23 @@
   <PropertyGroup>
     <Authors>Verovio.NET contributors</Authors>
     <Copyright>Copyright (c) 2026 Verovio.NET contributors</Copyright>
-    <Version>0.1.0-alpha</Version>
+    <!-- 0.1.0-alpha: Phase 04 single-package shape shipped (no DLL).
+         0.1.1-alpha: Phase 04b — libverovio.dll vendored at win-x64,
+         built from upstream verovio version-6.2.0 via MSVC v145 (VS
+         2026 Insiders) with -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON to
+         work around an upstream BUILD_AS_LIBRARY-on-Windows bug.
+         0.1.2-alpha: bundles upstream's data/ tree
+         (Bravura / Leland / Leipzig / Petaluma / Gootville / text
+         fonts + glyph bounding boxes) alongside the DLL under
+         runtimes/win-x64/native/verovio-data/. Toolkit.Create() now
+         auto-resolves that path from AppContext.BaseDirectory and
+         passes it to vrvToolkit_constructorResourcePath, so
+         consumers don't get "font resources are not available"
+         errors on LoadData. Also drops the `orientation` key from
+         the RenderOptions JSON (Verovio v6.x rejects it; the
+         F# Orientation enum is honoured by swapping page width/
+         height before serialising). -->
+    <Version>0.1.2-alpha</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the public NuGet feed.

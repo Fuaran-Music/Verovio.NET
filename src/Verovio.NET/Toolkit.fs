@@ -52,14 +52,47 @@ type Toolkit private (handle: nativeint) =
         if disposed then
             raise (ObjectDisposedException("Toolkit"))
 
-    /// Construct a toolkit with default resource-path resolution. Raises
-    /// `VerovioException` (with inner `LoadError.NativeLibraryUnavailable`)
-    /// if `libverovio` is not loadable on the current RID.
+    /// Auto-resolve the vendored `verovio-data/` resource directory.
+    /// The NuGet package ships the upstream `data/` tree alongside
+    /// `libverovio.dll` at `runtimes/<rid>/native/verovio-data/`; .NET
+    /// copies that payload next to the consuming assembly via the
+    /// CopyToOutputDirectory rule in Verovio.NET.fsproj. We find it
+    /// relative to AppContext.BaseDirectory so the path resolves both
+    /// in dev (consumer's `bin/Debug/net10.0/runtimes/...`) and in
+    /// `dotnet publish` output (same layout under the publish dir).
+    /// Returns `None` when the directory doesn't exist — the
+    /// parameterless Create() then falls back to vrvToolkit_constructor
+    /// (no path), which uses whatever default Verovio was built with.
+    static member private TryResolveVendoredResourcePath() : string option =
+        let baseDir = AppContext.BaseDirectory
+        let candidate = IO.Path.Combine(baseDir, "runtimes", "win-x64", "native", "verovio-data")
+
+        if IO.Directory.Exists candidate then
+            Some candidate
+        else
+            None
+
+    /// Construct a toolkit with default resource-path resolution.
+    /// Auto-resolves the vendored Verovio data/ folder (Bravura,
+    /// Leland, Leipzig, Petaluma, Gootville, text) from the package's
+    /// `runtimes/<rid>/native/verovio-data/` payload — required for
+    /// LoadData to succeed without the consumer thinking about font
+    /// paths. Falls back to the parameterless Verovio ctor when the
+    /// vendored payload is missing (e.g. a custom build that strips
+    /// the runtimes/ tree); consumers who hit that path should call
+    /// `Create(resourcePath)` with their own data/ location.
+    ///
+    /// Raises `VerovioException` (with inner
+    /// `LoadError.NativeLibraryUnavailable`) if `libverovio` is not
+    /// loadable on the current RID.
     static member Create() : Toolkit =
         match Interop.probeAvailability () with
         | Error msg -> raise (VerovioException(msg, LoadError.NativeLibraryUnavailable msg))
         | Ok() ->
-            let handle = Interop.vrvToolkit_constructor ()
+            let handle =
+                match Toolkit.TryResolveVendoredResourcePath() with
+                | Some path -> Interop.vrvToolkit_constructorResourcePath path
+                | None -> Interop.vrvToolkit_constructor ()
 
             if handle = nativeint 0 then
                 raise (
@@ -358,21 +391,28 @@ type Toolkit private (handle: nativeint) =
         // We build the JSON by hand here to avoid a dependency on a JSON
         // serialiser at the option-marshalling path; the option surface
         // is small and the keys are stable across upstream versions.
-        let orientation =
+        //
+        // `orientation` was dropped — Verovio v6.x doesn't accept it
+        // ("Unsupported option 'orientation'" stderr warning). Page
+        // orientation in Verovio is implicit in `pageWidth` /
+        // `pageHeight`; setting the wider dimension as `pageWidth`
+        // produces landscape. We honour the `Landscape` enum on the
+        // F# side by swapping the page dimensions before serialising,
+        // keeping the public C#/F# API stable.
+        let pageWidth, pageHeight =
             match options.Orientation with
-            | Portrait -> "portrait"
-            | Landscape -> "landscape"
+            | Portrait -> options.PageWidth, options.PageHeight
+            | Landscape -> options.PageHeight, options.PageWidth
 
         sprintf
-            """{"pageWidth":%d,"pageHeight":%d,"pageMarginTop":%d,"pageMarginBottom":%d,"pageMarginLeft":%d,"pageMarginRight":%d,"scale":%d,"orientation":"%s","adjustPageHeight":%b}"""
-            options.PageWidth
-            options.PageHeight
+            """{"pageWidth":%d,"pageHeight":%d,"pageMarginTop":%d,"pageMarginBottom":%d,"pageMarginLeft":%d,"pageMarginRight":%d,"scale":%d,"adjustPageHeight":%b}"""
+            pageWidth
+            pageHeight
             options.PageMarginTop
             options.PageMarginBottom
             options.PageMarginLeft
             options.PageMarginRight
             options.Scale
-            orientation
             options.AdjustPageHeight
 
     static member private collectIds (root: JsonElement) (kind: string) : string[] =
