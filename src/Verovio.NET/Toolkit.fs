@@ -404,8 +404,18 @@ type Toolkit private (handle: nativeint) =
             | Portrait -> options.PageWidth, options.PageHeight
             | Landscape -> options.PageHeight, options.PageWidth
 
+        // `footer` — only emit the JSON key when the consumer asked
+        // for a non-default value, to keep the option JSON minimal
+        // and let Verovio's own default behaviour stand otherwise.
+        let footerJson =
+            match options.Footer with
+            | FooterDisplay.Auto -> ""
+            | FooterDisplay.None -> ",\"footer\":\"none\""
+            | FooterDisplay.Always -> ",\"footer\":\"always\""
+            | FooterDisplay.Encoded -> ",\"footer\":\"encoded\""
+
         sprintf
-            """{"pageWidth":%d,"pageHeight":%d,"pageMarginTop":%d,"pageMarginBottom":%d,"pageMarginLeft":%d,"pageMarginRight":%d,"scale":%d,"adjustPageHeight":%b}"""
+            """{"pageWidth":%d,"pageHeight":%d,"pageMarginTop":%d,"pageMarginBottom":%d,"pageMarginLeft":%d,"pageMarginRight":%d,"scale":%d,"adjustPageHeight":%b%s}"""
             pageWidth
             pageHeight
             options.PageMarginTop
@@ -414,6 +424,7 @@ type Toolkit private (handle: nativeint) =
             options.PageMarginRight
             options.Scale
             options.AdjustPageHeight
+            footerJson
 
     static member private collectIds (root: JsonElement) (kind: string) : string[] =
         let mutable arr = Unchecked.defaultof<JsonElement>

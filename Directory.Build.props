@@ -24,8 +24,14 @@
          errors on LoadData. Also drops the `orientation` key from
          the RenderOptions JSON (Verovio v6.x rejects it; the
          F# Orientation enum is honoured by swapping page width/
-         height before serialising). -->
-    <Version>0.1.2-alpha</Version>
+         height before serialising).
+         0.1.3-alpha: adds `FooterDisplay` DU (Auto / None / Always
+         / Encoded) and `Footer: FooterDisplay` field on
+         RenderOptions, with a `WithFooter` builder. Wired into the
+         option JSON as the `footer` key. Lets consumers suppress
+         the "Engraved by Verovio" mark when the hosting page
+         carries its own attribution. -->
+    <Version>0.1.3-alpha</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the public NuGet feed.
