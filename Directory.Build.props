@@ -30,8 +30,23 @@
          RenderOptions, with a `WithFooter` builder. Wired into the
          option JSON as the `footer` key. Lets consumers suppress
          the "Engraved by Verovio" mark when the hosting page
-         carries its own attribution. -->
-    <Version>0.1.3-alpha</Version>
+         carries its own attribution.
+         0.1.4-alpha: adds `BreaksMode` DU (Auto / None / Smart / Line
+         / Encoded) and `Breaks: BreaksMode` field on RenderOptions,
+         with a `WithBreaks` builder. Wired into the option JSON as
+         the `breaks` key. Lets consumers override Verovio's default
+         auto-wrap heuristic — `Smart` balances line lengths (turning
+         a ragged 6+2 system layout into 4+4 for an 8-bar piece);
+         `Encoded` respects source-MEI `<sb/>` system breaks; etc.
+         0.1.5-alpha: adds the `vrvToolkit_redoLayout` P/Invoke +
+         calls it inside RenderToSvg after setOptions. Without this,
+         Verovio commits the initial layout at loadData and any
+         subsequent setOptions call to a layout-affecting option
+         (breaks / pageWidth / scale) is silently ignored. With it,
+         RenderToSvg re-flows against the just-set options on every
+         call. Same cost-amortisation as setOptions itself; one
+         layout pass per render. -->
+    <Version>0.1.5-alpha</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the public NuGet feed.

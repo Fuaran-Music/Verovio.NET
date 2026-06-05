@@ -209,6 +209,15 @@ type Toolkit private (handle: nativeint) =
                     if not (Interop.vrvToolkit_setOptions (handle, optionsJson)) then
                         Error(RenderError.RenderFailed "vrvToolkit_setOptions rejected the option string")
                     else
+                        // Layout-affecting options (breaks, pageWidth, scale)
+                        // need a redoLayout after setOptions — Verovio
+                        // commits the initial layout at loadData time and
+                        // setOptions alone doesn't re-flow. redoLayout
+                        // re-runs the layout pass against the new options.
+                        // Cost is one extra layout per render; cheap
+                        // relative to the SVG emit that follows.
+                        Interop.vrvToolkit_redoLayout (handle, "{}") |> ignore
+
                         match Interop.ptrToStringOrNull (Interop.vrvToolkit_renderToSVG (handle, pageNumber, true)) with
                         | null -> Error(RenderError.RenderFailed "vrvToolkit_renderToSVG returned null")
                         | svg -> Ok svg
@@ -414,8 +423,19 @@ type Toolkit private (handle: nativeint) =
             | FooterDisplay.Always -> ",\"footer\":\"always\""
             | FooterDisplay.Encoded -> ",\"footer\":\"encoded\""
 
+        // `breaks` — same minimality rule as `footer`. Verovio's
+        // toolkit accepts: "auto" | "none" | "smart" | "line" |
+        // "encoded".
+        let breaksJson =
+            match options.Breaks with
+            | BreaksMode.Auto -> ""
+            | BreaksMode.None -> ",\"breaks\":\"none\""
+            | BreaksMode.Smart -> ",\"breaks\":\"smart\""
+            | BreaksMode.Line -> ",\"breaks\":\"line\""
+            | BreaksMode.Encoded -> ",\"breaks\":\"encoded\""
+
         sprintf
-            """{"pageWidth":%d,"pageHeight":%d,"pageMarginTop":%d,"pageMarginBottom":%d,"pageMarginLeft":%d,"pageMarginRight":%d,"scale":%d,"adjustPageHeight":%b%s}"""
+            """{"pageWidth":%d,"pageHeight":%d,"pageMarginTop":%d,"pageMarginBottom":%d,"pageMarginLeft":%d,"pageMarginRight":%d,"scale":%d,"adjustPageHeight":%b%s%s}"""
             pageWidth
             pageHeight
             options.PageMarginTop
@@ -425,6 +445,7 @@ type Toolkit private (handle: nativeint) =
             options.Scale
             options.AdjustPageHeight
             footerJson
+            breaksJson
 
     static member private collectIds (root: JsonElement) (kind: string) : string[] =
         let mutable arr = Unchecked.defaultof<JsonElement>

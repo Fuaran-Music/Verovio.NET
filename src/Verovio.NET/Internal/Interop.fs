@@ -99,6 +99,14 @@ module Interop =
     [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
     extern void vrvToolkit_resetOptions(nativeint tkPtr)
 
+    /// Re-run document layout against the current options. Required
+    /// after a `setOptions` call that changes a layout-affecting
+    /// option (e.g. `breaks`, `pageWidth`, `scale`) AFTER `loadData`
+    /// has already computed the initial layout. Returns true on
+    /// success.
+    [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
+    extern bool vrvToolkit_redoLayout(nativeint tkPtr, [<MarshalAs(UnmanagedType.LPUTF8Str)>] string options)
+
     // ── Rendering ───────────────────────────────────────────────────────
 
     /// Render a single page to SVG. Returns a `const char*` owned by

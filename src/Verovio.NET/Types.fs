@@ -111,6 +111,30 @@ type FooterDisplay =
     | Always
     | Encoded
 
+/// Verovio's `breaks` rendering knob. Controls how the engraver decides
+/// where to wrap from one staff system to the next.
+///   - `Auto`: Verovio's default — wraps when content would otherwise
+///     overflow the page width.
+///   - `None`: never wrap; everything on a single line. Overflows the
+///     page width if content is long.
+///   - `Smart`: heuristic that tries to balance line lengths instead of
+///     packing each line full. Useful for scale displays where a "6
+///     bars + 2" auto wrap looks ragged.
+///   - `Line`: respect source-MEI `<lb/>` line-break elements only.
+///   - `Encoded`: respect source-MEI `<sb/>` system-break elements
+///     only. Use this when the caller has explicitly placed breaks at
+///     the desired bar positions.
+///
+/// `[<RequireQualifiedAccess>]` so the `None` case doesn't shadow
+/// `Option.None` at call sites that mix both types.
+[<RequireQualifiedAccess>]
+type BreaksMode =
+    | Auto
+    | None
+    | Smart
+    | Line
+    | Encoded
+
 /// Options passed to `Toolkit.LoadData`. Constructed via `LoadOptions.Create`
 /// or `LoadOptions.Default`.
 [<Struct>]
@@ -146,7 +170,8 @@ type RenderOptions =
           Scale_: int
           Orientation_: PageOrientation
           AdjustPageHeight_: bool
-          Footer_: FooterDisplay }
+          Footer_: FooterDisplay
+          Breaks_: BreaksMode }
 
     member this.PageWidth = this.PageWidth_
     member this.PageHeight = this.PageHeight_
@@ -158,6 +183,7 @@ type RenderOptions =
     member this.Orientation = this.Orientation_
     member this.AdjustPageHeight = this.AdjustPageHeight_
     member this.Footer = this.Footer_
+    member this.Breaks = this.Breaks_
 
     /// Verovio's documented scale range, per the toolkit option reference.
     static member val MinScale = 1
@@ -184,7 +210,8 @@ type RenderOptions =
           Scale_ = RenderOptions.DefaultScale
           Orientation_ = Portrait
           AdjustPageHeight_ = true
-          Footer_ = FooterDisplay.Auto }
+          Footer_ = FooterDisplay.Auto
+          Breaks_ = BreaksMode.Auto }
 
     /// Smart constructor — validates every field against the Verovio
     /// option reference. Returns an `Error` describing the first invalid
@@ -228,10 +255,12 @@ type RenderOptions =
                   Scale_ = scale
                   Orientation_ = orientation
                   AdjustPageHeight_ = adjustPageHeight
-                  // Footer is not part of the positional Create signature
-                  // — defaults to Verovio's Auto. Override via
-                  // `.WithFooter(...)` builder below.
-                  Footer_ = FooterDisplay.Auto }
+                  // Footer + Breaks are not part of the positional Create
+                  // signature — both default to Verovio's Auto. Override
+                  // via `.WithFooter(...)` / `.WithBreaks(...)` builders
+                  // below.
+                  Footer_ = FooterDisplay.Auto
+                  Breaks_ = BreaksMode.Auto }
 
     /// Smart constructor — same as `Create` but throws on invalid input.
     /// Ergonomic for call sites where the values are compile-time
@@ -271,9 +300,10 @@ type RenderOptions =
     /// chains like `.WithFooter(None).WithScale(80)` preserve the
     /// footer setting (otherwise Create would reseed it to Auto).
     member this.WithScale(scale: int) : Result<RenderOptions, string> =
-        // Stash byref `this`'s footer into a local — closures can't
-        // capture struct `this` (FS0406).
+        // Stash byref `this`'s footer + breaks into locals — closures
+        // can't capture struct `this` (FS0406).
         let footer = this.Footer_
+        let breaks = this.Breaks_
 
         RenderOptions.Create(
             this.PageWidth_,
@@ -286,13 +316,15 @@ type RenderOptions =
             this.Orientation_,
             this.AdjustPageHeight_
         )
-        |> Result.map (fun opts -> opts.WithFooter footer)
+        |> Result.map (fun opts -> opts.WithFooter(footer).WithBreaks(breaks))
 
     /// Builder pattern — derive a new RenderOptions from an existing one
     /// by overriding the page size. Returns `Error` if `width` or
-    /// `height` is non-positive. Footer carried through per `WithScale`.
+    /// `height` is non-positive. Footer + breaks carried through per
+    /// `WithScale`.
     member this.WithPageSize(width: int, height: int) : Result<RenderOptions, string> =
         let footer = this.Footer_
+        let breaks = this.Breaks_
 
         RenderOptions.Create(
             width,
@@ -305,7 +337,7 @@ type RenderOptions =
             this.Orientation_,
             this.AdjustPageHeight_
         )
-        |> Result.map (fun opts -> opts.WithFooter footer)
+        |> Result.map (fun opts -> opts.WithFooter(footer).WithBreaks(breaks))
 
     /// Builder pattern — derive a new RenderOptions from an existing one
     /// by overriding the orientation. Cannot fail.
@@ -321,7 +353,8 @@ type RenderOptions =
           Scale_ = this.Scale_
           Orientation_ = orientation
           AdjustPageHeight_ = this.AdjustPageHeight_
-          Footer_ = this.Footer_ }
+          Footer_ = this.Footer_
+          Breaks_ = this.Breaks_ }
 
     /// Builder pattern — derive a new RenderOptions from an existing one
     /// by overriding the footer display mode. Cannot fail. Use
@@ -337,7 +370,27 @@ type RenderOptions =
           Scale_ = this.Scale_
           Orientation_ = this.Orientation_
           AdjustPageHeight_ = this.AdjustPageHeight_
-          Footer_ = footer }
+          Footer_ = footer
+          Breaks_ = this.Breaks_ }
+
+    /// Builder pattern — derive a new RenderOptions from an existing one
+    /// by overriding the breaks (line-wrap) mode. Cannot fail. Use
+    /// `BreaksMode.Smart` to balance line lengths in a layout that
+    /// `Auto` would render ragged (e.g. an 8-bar scale as 6+2 vs.
+    /// 4+4); use `BreaksMode.Encoded` when the source MEI carries
+    /// explicit `<sb/>` system-break markers.
+    member this.WithBreaks(breaks: BreaksMode) : RenderOptions =
+        { PageWidth_ = this.PageWidth_
+          PageHeight_ = this.PageHeight_
+          PageMarginTop_ = this.PageMarginTop_
+          PageMarginBottom_ = this.PageMarginBottom_
+          PageMarginLeft_ = this.PageMarginLeft_
+          PageMarginRight_ = this.PageMarginRight_
+          Scale_ = this.Scale_
+          Orientation_ = this.Orientation_
+          AdjustPageHeight_ = this.AdjustPageHeight_
+          Footer_ = this.Footer_
+          Breaks_ = breaks }
 
 /// PDF-specific render options. PDF output is multi-page; SVG output is
 /// per-page. Constructed via `PdfOptions.Create` or `PdfOptions.Default`.
