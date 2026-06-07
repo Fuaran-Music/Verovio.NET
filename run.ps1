@@ -124,11 +124,18 @@ if (-not $SkipTests) {
         # Expecto console runner — `dotnet run --project`, NOT `dotnet test`
         # (`dotnet test` silently no-ops on Expecto consoles). `--no-build`
         # MUST precede `--project` or `dotnet run` forwards it to Expecto.
+        #
+        # `--sequenced` — libverovio holds process-global state (xml:id
+        # RNG, log toggles, font/resource path). Concurrent Expecto
+        # tests across that state cause intermittent native-heap
+        # corruption under parallel execution; sequenced execution
+        # eliminates the race for the cost of ~1s wall-clock on the
+        # current 90-test suite.
         if ($SkipBuild) {
-            dotnet run --project $project -c Release
+            dotnet run --project $project -c Release -- --sequenced
         }
         else {
-            dotnet run --no-build --project $project -c Release
+            dotnet run --no-build --project $project -c Release -- --sequenced
         }
         if ($LASTEXITCODE -ne 0) { Write-Error "$project failed (exit $LASTEXITCODE)"; exit $LASTEXITCODE }
     }

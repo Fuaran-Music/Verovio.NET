@@ -14,42 +14,65 @@ to be ergonomic from both F# and C#.
 
 ## Status
 
-`0.1.0-alpha` — Phase 04 structural pivot.
+`0.2.0-alpha` — **complete `c_wrapper.h` coverage** (Phase 49).
 
-The repo now ships a **single NuGet package** (`Verovio.NET`) carrying the
-public API + P/Invoke implementation. The original Phase 03 three-package
-design (Verovio.NET + Verovio.NET.Wasm + Verovio.NET.Native) was collapsed
-in Phase 04 once the upstream WASM distribution shape was found
-incompatible with direct Wasmtime.NET hosting (it's an Emscripten build
-with the WASM base64-embedded inside a Node-only JS bundle). The native
-P/Invoke path consumes upstream's [`tools/c_wrapper.h`](https://github.com/rism-digital/verovio/blob/develop/tools/c_wrapper.h)
+The repo ships a **single NuGet package** (`Verovio.NET`) carrying the
+public API + P/Invoke implementation, vendoring `libverovio.dll` for
+win-x64. The native path consumes upstream's
+[`tools/c_wrapper.h`](https://github.com/rism-digital/verovio/blob/version-6.2.0/tools/c_wrapper.h)
 shim directly — the same surface upstream's Go bindings use.
 
-**What ships at 0.1.0-alpha:**
+Every one of the 61 upstream functions is bound and surfaced through the
+public `Toolkit` class (plus the `VerovioLogging` static for the two
+process-global logging toggles). Fallible methods expose both
+`Result<_, _>`-returning and `*OrThrow` variants.
 
-- Public `Toolkit` class with C#-friendly member methods (LoadData,
-  RenderToSvg, GetMei, RenderToMidi, GetElementsAtTime,
-  GetMidiValuesForElement, GetDocumentInfo, Version) — both
-  `Result`-returning and `*OrThrow` variants.
-- Closed-DU type surface (`InputFormat`, `OutputFormat`, `LoadError`,
-  `RenderError`, smart-ctor `RenderOptions` / `LoadOptions` /
-  `PdfOptions`).
-- DllImport surface against the upstream c_wrapper.h, ready to bind once
-  `libverovio.dll` is built and vendored.
-- Sample console + Expecto test suite — both compile and run; the
-  native-dispatched tests skip gracefully when `libverovio.dll` is
-  missing.
+### Capability coverage
 
-**What's deferred to a follow-up phase (also Phase 04 close-out):**
+| Domain | Surface |
+|---|---|
+| Lifecycle | `Toolkit.Create()` / `Create(resourcePath)` / `IDisposable` |
+| Document loading | `LoadData` / `LoadFile` / `LoadZipBase64` / `LoadZipBuffer` |
+| In-memory rendering | `RenderToSvg` / `RenderToMidi` / `RenderData` (one-shot) / `GetMei` / `GetHumdrum` / `RenderToPae` / `RenderToExpansionMap` |
+| Typed Timemap | `RenderToTimemap` → `Timemap` (per-event `RealTimeMs` + `ScoreTimeQuarter` + `NotesOn`/`Off` + optional `Tempo`) + `RenderToTimemapJson` raw |
+| Format conversion | `ConvertHumdrumToHumdrum` / `ConvertHumdrumToMidi` / `ConvertMeiToHumdrum` |
+| File I/O | `SaveFile` / `RenderToSvgFile` / `RenderToMidiFile` / `RenderToPaeFile` / `RenderToExpansionMapFile` / `RenderToTimemapFile` / `GetHumdrumFile` |
+| Options introspection | `GetAvailableOptions` / `GetDefaultOptions` / `GetOptions` / `GetOptionUsageString` / `GetOptionsIntrospection` (bundle) / `SetRawOptions` / `ResetOptions` |
+| Layout / scale / resource path | `RedoLayout` / `RedoPagePitchPosLayout` / `GetScale` / `SetScale` / `SetOutputTo` / `GetResourcePath` / `SetResourcePath` |
+| Element queries | `GetDocumentInfo` / `GetId` / `GetPageWithElement` / `GetElementsAtTime` / `GetMidiValuesForElement` / `GetElementAttr` / `GetExpansionIdsForElement` / `GetNotatedIdForElement` / `GetTimeForElement` / `GetTimesForElement` (typed) / `GetDescriptiveFeatures` |
+| Editor surface (raw passthrough) | `Edit(EditorAction)` / `EditInfo` / `Select` |
+| Validation | `ValidatePae` / `ValidatePaeFile` → `PaeValidationReport` |
+| Determinism | `Determinism.DefaultXmlIdSeed` / `Toolkit.ResetXmlIdSeed(seed)` (sticky) |
+| Logging | `VerovioLogging.EnableConsole` / `.EnableBuffer` (global) / `Toolkit.DrainLog` (per-toolkit) |
 
-- `libverovio.dll` build for win-x64 (see [Building libverovio.dll](#building-libveroviodll)).
-- The DLL itself committed under `src/Verovio.NET/runtimes/win-x64/native/`.
-- Snapshot tests against a golden SVG corpus (generated from the built DLL).
-- PDF rendering — upstream's `c_wrapper.h` doesn't expose
-  `vrvToolkit_renderToPDF`; we either extend the wrapper or post-process
-  multi-page SVG.
-- Multi-RID coverage: linux-x64, osx-arm64, linux-arm64. The CMake build
-  + CI job to produce these are tracked for the v0.x scope.
+### Determinism contract
+
+> With the same `(libverovio version, MEI input, RenderOptions, xml:id seed)` tuple, every Toolkit on every machine produces byte-identical SVG.
+
+Upstream's xml:id RNG is C++-static (process-global rather than
+per-toolkit). Verovio.NET surfaces a stable contract on top of it by
+re-seeding at every load and render boundary from a sticky
+per-Toolkit field initialised to `Determinism.DefaultXmlIdSeed = 1`
+(the smallest non-zero value; `0` is upstream's "randomize-from-clock"
+sentinel). Override the sticky seed via `ResetXmlIdSeed(seed)` — useful
+for content-addressable engraving where seed = hash(document) makes
+identical outputs trivially attributable.
+
+### What's deferred
+
+- **Multi-RID coverage**: linux-x64, osx-arm64, linux-arm64. Tracked
+  separately; gated on the first cross-platform consumer.
+- **PDF rendering**: upstream's `c_wrapper.h` doesn't expose
+  `vrvToolkit_renderToPDF`. `RenderToPdf` returns
+  `Error UnsupportedOutputFormat` pending a wrapper-extension or
+  SVG-post-process decision.
+- **Typed `EditorAction` DU**: editor actions ship as raw JSON via
+  `EditorAction.FromRawJson` for now. The typed constructor lands when
+  a Builder consumer drives editor actions through Verovio (instead of
+  through F# Score trees).
+- **Typed `DescriptiveFeatures` model**: ships as raw JSON. The typed
+  model lands when a curriculum / pedagogy consumer drives the
+  requirements.
 
 ## Package
 
@@ -155,15 +178,16 @@ re-run the vendor script, run the snapshot tests, update the
 Verovio.NET/
 ├── src/
 │   ├── Verovio.NET/
-│   │   ├── Types.fs                     # public closed DUs + option records
-│   │   ├── Internal/Interop.fs          # DllImport bindings
+│   │   ├── Types.fs                     # public closed DUs + option records + typed returns
+│   │   ├── Internal/Interop.fs          # DllImport bindings (61/61 c_wrapper functions)
+│   │   ├── Logging.fs                   # VerovioLogging static (process-global toggles)
 │   │   ├── Toolkit.fs                   # public Toolkit class
 │   │   └── runtimes/win-x64/native/
 │   │       ├── libverovio.dll           # vendored binary (built via scripts/)
 │   │       └── PROVENANCE.md
 │   └── Verovio.NET.Tests/               # Expecto suite over the public API
 ├── samples/
-│   └── Verovio.NET.Samples.Console/     # minimal end-to-end smoke
+│   └── Verovio.NET.Samples.Console/     # multi-domain end-to-end smoke
 ├── scripts/
 │   └── build-libverovio.ps1             # vendor-DLL build (operator-run)
 ├── Verovio.NET.slnx

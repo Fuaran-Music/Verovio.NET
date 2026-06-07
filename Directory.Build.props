@@ -45,8 +45,24 @@
          (breaks / pageWidth / scale) is silently ignored. With it,
          RenderToSvg re-flows against the just-set options on every
          call. Same cost-amortisation as setOptions itself; one
-         layout pass per render. -->
-    <Version>0.1.5-alpha</Version>
+         layout pass per render.
+         0.2.0-alpha: Phase 49 full c_wrapper.h coverage. Public
+         surface grows from 16/61 to 61/61 upstream functions, with
+         typed Timemap / ElementTimes / OptionsIntrospection /
+         PaeValidationReport returns and a determinism contract
+         (sticky per-Toolkit xml:id seed, reseeded at every load and
+         render boundary so two toolkits loading the same MEI
+         produce byte-identical SVG). New types: FileNotFound /
+         FileWriteFailed / InvalidEditorAction / ElementNotFound
+         error cases; EditorAction wrapper for the raw-JSON editor
+         passthrough; Determinism static carrier for DefaultXmlIdSeed.
+         New file: Logging.fs (VerovioLogging static class for
+         process-global console + buffer toggles; per-Toolkit
+         DrainLog stays on Toolkit). Bumps minor (0.2.x) rather
+         than patch (0.1.6) because the new error cases are
+         technically a breaking change for exhaustive pattern
+         matches on LoadError / RenderError. -->
+    <Version>0.2.0-alpha</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the public NuGet feed.

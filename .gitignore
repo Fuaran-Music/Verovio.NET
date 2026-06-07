@@ -32,3 +32,7 @@ external/
 # Local NuGet drop folder. Verovio.NET packs into the workspace-level
 # ../local-nuget-feed/ via run.ps1, not here.
 local-nuget-feed/
+
+# Throwaway probes, log dumps from `pwsh ./run.ps1`, and intermediate
+# diagnostic files. Created during phase work; never committed.
+artifacts/

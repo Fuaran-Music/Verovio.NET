@@ -8,10 +8,12 @@ open Verovio.NET
 // ============================================================================
 //  Sample console — end-to-end smoke for the public Verovio.NET API.
 //
-//  Loads the c-major.mei fixture, asserts the SVG renders without
-//  exception, and validates the output is well-formed XML. Optional
-//  `--write-svg` flag writes the rendered SVG to disk under output/
-//  for visual verification.
+//  Loads the c-major.mei fixture and exercises one method from each
+//  binding domain so OSS consumers have a concrete "what does this
+//  look like in F#?" reference: SVG render → MEI round-trip → MIDI →
+//  Humdrum → timemap → options introspection → element query → edit
+//  scaffold. Each section prints a one-line summary; the program
+//  exits 0 on success.
 //
 //  Failure modes are distinguished:
 //    * libverovio.dll missing — Verovio.NET raises VerovioException with
@@ -47,9 +49,15 @@ let private validateXml (svg: string) : Result<unit, string> =
     with ex ->
         Error(sprintf "XML parse failed: %s" ex.Message)
 
+let private head (s: string) (n: int) : string =
+    if s.Length <= n then
+        s.Replace("\n", " ").Replace("\r", "")
+    else
+        s.Substring(0, n).Replace("\n", " ").Replace("\r", "") + "…"
+
 let private runSmoke (args: {| WriteSvg: bool |}) : int =
-    printfn "Verovio.NET — Phase 04 sample console (native backend)"
-    printfn "======================================================"
+    printfn "Verovio.NET — Phase 49 sample console (full c_wrapper coverage)"
+    printfn "==============================================================="
     printfn ""
 
     let fixture = fixturePath ()
@@ -57,9 +65,7 @@ let private runSmoke (args: {| WriteSvg: bool |}) : int =
 
     if not (File.Exists fixture) then
         eprintfn "  FIXTURE MISSING — expected %s" fixture
-
         eprintfn "  (Build output should copy samples/Verovio.NET.Samples.Console/fixtures/* — check the fsproj.)"
-
         1
     else
         let mei = File.ReadAllText fixture
@@ -69,44 +75,116 @@ let private runSmoke (args: {| WriteSvg: bool |}) : int =
         try
             use toolkit = Toolkit.Create()
             printfn "Toolkit constructed. Verovio version: %s" toolkit.Version
+            printfn "  Default xml:id seed: %d" Determinism.DefaultXmlIdSeed
             printfn ""
 
-            printfn "Calling toolkit.LoadData ..."
+            printfn "── 1. SVG render ─────────────────────────────────────────────"
+            toolkit.LoadDataOrThrow(mei)
+            let svg = toolkit.RenderToSvgOrThrow(1)
+            printfn "  RenderToSvg(1) → %d bytes" svg.Length
 
-            match toolkit.LoadData(mei) with
-            | Error err ->
-                eprintfn "  loadData returned Error %A" err
+            match validateXml svg with
+            | Error msg ->
+                eprintfn "  SVG is not well-formed XML: %s" msg
                 1
             | Ok() ->
-                printfn "  loadData returned Ok ()."
+                printfn "  SVG parses as well-formed XML ✓"
+
+                if args.WriteSvg then
+                    let outDir = Path.Combine(AppContext.BaseDirectory, "output")
+                    Directory.CreateDirectory outDir |> ignore
+                    let outPath = Path.Combine(outDir, "c-major.svg")
+                    File.WriteAllText(outPath, svg)
+                    printfn "  Wrote SVG to %s" outPath
+
                 printfn ""
 
-                printfn "Calling toolkit.RenderToSvg(1) ..."
+                printfn "── 2. MEI round-trip ─────────────────────────────────────────"
+                let meiOut = toolkit.GetMeiOrThrow()
+                printfn "  GetMei → %d bytes, preview: %s" meiOut.Length (head meiOut 80)
+                printfn ""
 
-                match toolkit.RenderToSvg(1) with
-                | Error err ->
-                    eprintfn "  renderToSvg returned Error %A" err
-                    1
-                | Ok svg ->
-                    printfn "  renderToSvg returned %d bytes of SVG" svg.Length
+                printfn "── 3. MIDI render ────────────────────────────────────────────"
+                let midi = toolkit.RenderToMidiOrThrow()
 
-                    match validateXml svg with
-                    | Error msg ->
-                        eprintfn "  SVG is not well-formed XML: %s" msg
-                        1
-                    | Ok() ->
-                        printfn "  SVG parses as well-formed XML ✓"
+                printfn
+                    "  RenderToMidi → %d bytes (MThd header: 0x%02X%02X%02X%02X)"
+                    midi.Length
+                    midi[0]
+                    midi[1]
+                    midi[2]
+                    midi[3]
 
-                        if args.WriteSvg then
-                            let outDir = Path.Combine(AppContext.BaseDirectory, "output")
-                            Directory.CreateDirectory outDir |> ignore
-                            let outPath = Path.Combine(outDir, "c-major.svg")
-                            File.WriteAllText(outPath, svg)
-                            printfn "  Wrote SVG to %s" outPath
+                printfn ""
 
-                        printfn ""
-                        printfn "✓ Sample console smoke passed."
-                        0
+                printfn "── 4. Humdrum round-trip ────────────────────────────────────"
+                let krn = toolkit.GetHumdrumOrThrow()
+                printfn "  GetHumdrum → %d bytes, preview: %s" krn.Length (head krn 80)
+                printfn ""
+
+                printfn "── 5. Timemap (typed) ───────────────────────────────────────"
+                let timemap = toolkit.RenderToTimemapOrThrow()
+                printfn "  RenderToTimemap → %d entries" timemap.Entries.Length
+
+                if timemap.Entries.Length > 0 then
+                    let first = timemap.Entries[0]
+
+                    printfn
+                        "  First event: realTimeMs=%.1f, quarter=%.2f, notesOn=%d, notesOff=%d"
+                        first.RealTimeMs
+                        first.ScoreTimeQuarter
+                        first.NotesOn.Length
+                        first.NotesOff.Length
+
+                printfn ""
+
+                printfn "── 6. Options introspection ─────────────────────────────────"
+                let avail = toolkit.GetAvailableOptions()
+                let defaults = toolkit.GetDefaultOptions()
+                let usage = toolkit.GetOptionUsageString()
+                printfn "  GetAvailableOptions → %d bytes" avail.Length
+                printfn "  GetDefaultOptions   → %d bytes" defaults.Length
+                printfn "  GetOptionUsageString → %d bytes" usage.Length
+                printfn ""
+
+                printfn "── 7. Element queries ───────────────────────────────────────"
+
+                match toolkit.GetPageWithElement("no-such-id") with
+                | Error(RenderError.ElementNotFound _) ->
+                    printfn "  GetPageWithElement(\"no-such-id\") → ElementNotFound (expected)"
+                | other -> printfn "  GetPageWithElement(\"no-such-id\") → %A" other
+
+                let descriptive =
+                    match toolkit.GetDescriptiveFeatures("{}") with
+                    | Ok j -> j
+                    | Error e -> sprintf "(error: %A)" e
+
+                printfn "  GetDescriptiveFeatures → %d bytes, preview: %s" descriptive.Length (head descriptive 80)
+                printfn ""
+
+                printfn "── 8. Editor surface (raw passthrough) ──────────────────────"
+                let info = toolkit.EditInfo()
+                printfn "  EditInfo (no prior edit): %s" (head info 80)
+                // Demonstrate the error path without crashing the smoke
+                let bogus = EditorAction.FromRawJson("""{"action":"unknown","param":{}}""")
+
+                match toolkit.Edit(bogus) with
+                | Error(RenderError.InvalidEditorAction _)
+                | Error(RenderError.BackendError _) -> printfn "  Edit(unknown action) → rejected as expected"
+                | Ok() -> printfn "  Edit(unknown action) → Ok (Verovio accepted it)"
+                | Error e -> printfn "  Edit(unknown action) → unexpected error %A" e
+
+                printfn ""
+
+                printfn "── 9. Logging (process-global toggles) ──────────────────────"
+                VerovioLogging.EnableBuffer(true)
+                let log = toolkit.DrainLog()
+                printfn "  DrainLog returned %d bytes (buffer mode enabled)" log.Length
+                VerovioLogging.EnableBuffer(false)
+                printfn ""
+
+                printfn "✓ Sample console smoke passed."
+                0
         with :? VerovioException as ex ->
             match ex.InnerError with
             | :? LoadError as loadErr ->
@@ -120,7 +198,7 @@ let private runSmoke (args: {| WriteSvg: bool |}) : int =
                     eprintfn "src/Verovio.NET/runtimes/win-x64/native/PROVENANCE.md."
                     2
                 | other ->
-                    eprintfn "Toolkit.Create raised VerovioException with inner LoadError %A" other
+                    eprintfn "Toolkit raised VerovioException with inner LoadError %A" other
                     1
             | other ->
                 eprintfn "VerovioException raised with unexpected inner error: %A" other

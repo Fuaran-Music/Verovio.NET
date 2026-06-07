@@ -13,6 +13,7 @@
   <ItemGroup>
     <Compile Include="Types.fs" />
     <Compile Include="Internal\Interop.fs" />
+    <Compile Include="Logging.fs" />
     <Compile Include="Toolkit.fs" />
   </ItemGroup>
   <!-- Vendored libverovio.dll (LGPL-3.0). The runtimes/<rid>/native
