@@ -77,16 +77,38 @@ type Toolkit private (handle: nativeint) =
     /// Returns `None` when the directory doesn't exist — the
     /// parameterless Create() then falls back to vrvToolkit_constructor
     /// (no path), which uses whatever default Verovio was built with.
+    ///
+    /// **Multi-RID lookup.** The package ships `libverovio.dll` only at
+    /// `runtimes/win-x64/native/`, but Linux + macOS deployments can
+    /// drop a self-built `libverovio.so` / `libverovio.dylib` into the
+    /// matching RID folder alongside the verovio-data payload.
+    /// `RuntimeInformation.RuntimeIdentifier` returns the current
+    /// process's RID (e.g. `linux-x64` inside an Azure App Service
+    /// Linux container) — we try that first, then fall back through
+    /// the known RID set so an existing payload under any vendored
+    /// RID still resolves. The data files themselves are identical
+    /// across RIDs; the lookup is purely about reaching a non-empty
+    /// directory.
     static member private TryResolveVendoredResourcePath() : string option =
         let baseDir = AppContext.BaseDirectory
 
-        let candidate =
-            IO.Path.Combine(baseDir, "runtimes", "win-x64", "native", "verovio-data")
+        let candidateRids =
+            [ RuntimeInformation.RuntimeIdentifier
+              "win-x64"
+              "linux-x64"
+              "linux-arm64"
+              "osx-arm64"
+              "osx-x64" ]
+            |> List.distinct
 
-        if IO.Directory.Exists candidate then
-            Some candidate
-        else
-            None
+        candidateRids
+        |> List.tryPick (fun rid ->
+            let candidate = IO.Path.Combine(baseDir, "runtimes", rid, "native", "verovio-data")
+
+            if IO.Directory.Exists candidate then
+                Some candidate
+            else
+                None)
 
     /// Apply the determinism contract: seed the xml:id RNG to a known
     /// value. Upstream's `Object::SeedID` writes a C++ static, so the

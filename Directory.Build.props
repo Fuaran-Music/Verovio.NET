@@ -61,8 +61,20 @@
          DrainLog stays on Toolkit). Bumps minor (0.2.x) rather
          than patch (0.1.6) because the new error cases are
          technically a breaking change for exhaustive pattern
-         matches on LoadError / RenderError. -->
-    <Version>0.2.0-alpha</Version>
+         matches on LoadError / RenderError.
+         0.2.1-alpha (2026-06-09): multi-RID resolver in
+         `Toolkit.TryResolveVendoredResourcePath`. Was hardcoded to
+         look at `runtimes/win-x64/native/verovio-data` only — Linux
+         + macOS containers that drop a self-built libverovio.so /
+         .dylib under `runtimes/linux-x64/native/` (etc.) couldn't
+         find the data folder and fell through to the no-path
+         constructor, which renders without the font payload. Now
+         tries `RuntimeInformation.RuntimeIdentifier` first, then
+         falls back through the known RID set. No behaviour change
+         on Windows where the existing win-x64 payload still
+         resolves; unblocks Azure App Service (Linux) and
+         linux-arm64 / macOS deployments. -->
+    <Version>0.2.1-alpha</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the public NuGet feed.
