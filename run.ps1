@@ -47,6 +47,35 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
+# ─── Locate a dotnet SDK ─────────────────────────────────────────────
+# ARM64-Windows machines ship `C:\Program Files\dotnet\` as the arm64
+# host (runtime only — no SDK); the x64 SDK this repo needs (the
+# vendored libverovio.dll is win-x64 only) installs into the
+# `dotnet\x64\` subfolder, which the installer does NOT put on PATH. If
+# the dotnet on PATH has no SDK, fall back to that subfolder for this
+# process so a plain `pwsh ./run.ps1` works from any shell.
+$dotnetCmd = Get-Command dotnet -ErrorAction SilentlyContinue
+$sdksFound = $false
+
+if ($dotnetCmd) {
+    $sdks = & $dotnetCmd.Source --list-sdks 2>$null
+    $sdksFound = ($LASTEXITCODE -eq 0) -and $sdks
+}
+
+if (-not $sdksFound) {
+    $x64Root = Join-Path $env:ProgramFiles "dotnet\x64"
+
+    if (Test-Path (Join-Path $x64Root "dotnet.exe")) {
+        Write-Host "run.ps1: dotnet on PATH has no SDK — falling back to $x64Root" -ForegroundColor Yellow
+        $env:PATH = "$x64Root;$env:PATH"
+        $env:DOTNET_ROOT = $x64Root
+    }
+    else {
+        Write-Error "No .NET SDK found on PATH (and no x64 fallback at $x64Root) — install the x64 .NET 10 SDK pinned by global.json. https://aka.ms/dotnet/sdk-not-found"
+        exit 1
+    }
+}
+
 function Write-Step {
     param([string] $message)
     Write-Host ""
