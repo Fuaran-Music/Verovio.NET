@@ -73,8 +73,31 @@
          falls back through the known RID set. No behaviour change
          on Windows where the existing win-x64 payload still
          resolves; unblocks Azure App Service (Linux) and
-         linux-arm64 / macOS deployments. -->
-    <Version>0.2.1-alpha</Version>
+         linux-arm64 / macOS deployments.
+         0.2.2-alpha (2026-06-15): multi-RID vendoring (Phase 56).
+         Adds the win-arm64 native engine (libverovio.dll cross-built
+         with the MSVC ARM64 toolset, `cmake -A ARM64`) at
+         runtimes/win-arm64/native/, so ARM64 Windows hosts resolve
+         the engine instead of failing Toolkit.Create with
+         "Unable to load DLL 'libverovio'". `scripts/build-libverovio.ps1`
+         generalised to a `-Rid` parameter (win-x64 | win-arm64) +
+         `-products *` vswhere fix so a BuildTools-only host is
+         discovered. **verovio-data delivery reworked**: the SMuFL
+         font/glyph payload now ships ONCE under buildTransitive/ and is
+         copied into consumer output via buildTransitive/Verovio.NET.targets,
+         NOT as a runtimes/<rid>/native native asset. Native-asset delivery
+         flattened the per-font subdirectories and tripped NETSDK1152
+         ("multiple publish output files with the same relative path",
+         e.g. Bravura/0020.xml vs Gootville/0020.xml) on any
+         `dotnet publish -r <rid>` — the exact shape ScaleMastery deploys.
+         The targets copy preserves structure and runs on every build/publish
+         regardless of RID; the cross-RID resolver finds the single
+         win-x64-located copy on linux/arm64 too. Backward-compatible with
+         consumers that still supply their own data. linux-x64 libverovio.so
+         vendoring + linux build infra (scripts/Dockerfile.libverovio-linux +
+         build-libverovio-linux.ps1) land here too; the .so binary itself is
+         committed once a Linux build host is available. -->
+    <Version>0.2.2-alpha</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the public NuGet feed.
