@@ -47,14 +47,12 @@ the resulting DLL into this directory.
 
 ## Validation status
 
-- **Static (done on the x64 build host):** machine type confirmed AA64
-  (ARM64); full `c_wrapper.h` export surface present.
-- **Runtime (deferred):** `Toolkit.Create()` + an SVG render exercise the
-  loaded native engine and can only run on an **ARM64 Windows host**. The
-  build host (Diametrical-Pro) is x64, so the cross-built binary is
-  symbol-verified here; the runtime smoke (the Expecto suite's
-  `skipUnlessNative` cohort) runs — and must pass — on an ARM64 Windows host
-  before this RID is declared fully validated.
+- **Static (on the x64 build host):** machine type confirmed AA64 (ARM64);
+  full `c_wrapper.h` export surface present.
+- **Runtime (on an ARM64 Windows host, 2026-06-15):** the Verovio.NET
+  Expecto suite runs **90/90 (0 ignored)** — the `skipUnlessNative` cohort
+  runs (not skips), so `Toolkit.Create()` + SVG render exercise this DLL
+  natively on ARM64 Windows. Fully validated.
 
 ## Verification
 
