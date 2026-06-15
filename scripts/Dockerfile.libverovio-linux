@@ -1,0 +1,62 @@
+# syntax=docker/dockerfile:1
+#
+# Reproducible linux-x64 build of libverovio.so from upstream
+# rism-digital/verovio, for vendoring into Verovio.NET under
+# runtimes/linux-x64/native/.
+#
+# This is the Linux counterpart of scripts/build-libverovio.ps1 (which
+# covers the Windows RIDs). The .so needs a Linux toolchain, so the build
+# runs in a Debian container; the final `export` stage is a `scratch`
+# image containing only the artefacts, so a BuildKit
+# `--output type=local` extracts them straight to the host with no
+# `docker create` / `docker cp` dance.
+#
+# Driven by scripts/build-libverovio-linux.ps1. Manual invocation:
+#
+#   docker build -f scripts/Dockerfile.libverovio-linux \
+#     --build-arg VEROVIO_TAG=version-6.2.0 \
+#     --target export --output type=local,dest=./scripts/_linux-out .
+#
+# Keep VEROVIO_TAG in lockstep with $VerovioTag in
+# scripts/build-libverovio.ps1 and the PROVENANCE.md pin rows.
+
+FROM debian:bookworm-slim AS build
+ARG VEROVIO_TAG=version-6.2.0
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates git cmake g++ make && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /verovio-src
+RUN git clone --depth 1 --branch ${VEROVIO_TAG} \
+        https://github.com/rism-digital/verovio.git .
+
+# Capture the resolved commit SHA so the provenance row stays honest even
+# though we cloned a tag (tags can, in principle, move).
+RUN git rev-parse HEAD > /verovio-src/COMMIT_SHA
+
+# Upstream's CMakeLists.txt lives at cmake/CMakeLists.txt and emits the
+# library as `libverovio.so` when BUILD_AS_LIBRARY=ON. No
+# CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS dance is needed on Linux — ELF exports
+# all non-static symbols by default, so the c_wrapper.h surface is
+# visible to dlsym/P-Invoke without the Windows workaround. Multi-job
+# make scales with the build host's CPU count.
+WORKDIR /verovio-src/cmake
+RUN cmake -DBUILD_AS_LIBRARY=ON -DCMAKE_BUILD_TYPE=Release . && \
+    make -j"$(nproc)" verovio
+
+# Stage the artefacts at a known path.
+WORKDIR /verovio-build
+RUN cp /verovio-src/cmake/libverovio.so . && \
+    cp /verovio-src/COMMIT_SHA . && \
+    sha256sum libverovio.so > libverovio.so.sha256 && \
+    cp -r /verovio-src/data verovio-data
+
+# ── Export stage ────────────────────────────────────────────────────
+# `scratch` so `--output type=local` writes ONLY these files to the host
+# dest dir (libverovio.so + its sha256 + the commit sha + the data tree).
+FROM scratch AS export
+COPY --from=build /verovio-build/libverovio.so /libverovio.so
+COPY --from=build /verovio-build/libverovio.so.sha256 /libverovio.so.sha256
+COPY --from=build /verovio-build/COMMIT_SHA /COMMIT_SHA
+COPY --from=build /verovio-build/verovio-data /verovio-data

@@ -1,0 +1,34 @@
+<Project>
+  <!-- Auto-imported by NuGet into PackageReference consumers of
+       Verovio.NET (the file name matches the package id, and living under
+       buildTransitive/ makes the import transitive).
+
+       It delivers Verovio's font + glyph-bounding-box payload
+       (verovio-data) into the consumer's build + publish output at
+       runtimes/win-x64/native/verovio-data/, preserving the per-font
+       subdirectory structure. Toolkit.Create() resolves that path on every
+       platform via its cross-RID fallback
+       (Toolkit.TryResolveVendoredResourcePath tries the current RID then
+       win-x64), so one win-x64-located copy serves win-x64, win-arm64, and
+       linux-x64 consumers alike.
+
+       Why a targets-driven content copy instead of packing the data under
+       runtimes/<rid>/native/ as a NuGet native runtime asset: native-asset
+       delivery flattens nested directories and trips NETSDK1152 ("multiple
+       publish output files with the same relative path", e.g.
+       Bravura/0020.xml vs Gootville/0020.xml) on any `dotnet publish -r
+       <rid>` — which is exactly how the reference consumer deploys. The
+       <None>/Link/CopyToOutputDirectory items below preserve the structure
+       and flow into both build output and publish output without the
+       native-asset path collision. The native ENGINE binary
+       (libverovio.dll / .so) IS a native asset — that's a single file per
+       RID, so it has no collision. -->
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)verovio-data')">
+    <None Include="$(MSBuildThisFileDirectory)verovio-data\**\*">
+      <Link>runtimes\win-x64\native\verovio-data\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Pack>false</Pack>
+      <Visible>false</Visible>
+    </None>
+  </ItemGroup>
+</Project>

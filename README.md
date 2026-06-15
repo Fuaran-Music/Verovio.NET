@@ -14,11 +14,14 @@ to be ergonomic from both F# and C#.
 
 ## Status
 
-`0.2.0-alpha` — **complete `c_wrapper.h` coverage** (Phase 49).
+`0.2.2-alpha` — **complete `c_wrapper.h` coverage** (Phase 49) + **multi-RID
+native vendoring** (Phase 56).
 
 The repo ships a **single NuGet package** (`Verovio.NET`) carrying the
-public API + P/Invoke implementation, vendoring `libverovio.dll` for
-win-x64. The native path consumes upstream's
+public API + P/Invoke implementation, vendoring the native engine for
+**win-x64**, **win-arm64**, and **linux-x64** (see
+[Supported runtimes](#supported-runtimes)). The native path consumes
+upstream's
 [`tools/c_wrapper.h`](https://github.com/rism-digital/verovio/blob/version-6.2.0/tools/c_wrapper.h)
 shim directly — the same surface upstream's Go bindings use.
 
@@ -58,10 +61,29 @@ sentinel). Override the sticky seed via `ResetXmlIdSeed(seed)` — useful
 for content-addressable engraving where seed = hash(document) makes
 identical outputs trivially attributable.
 
+### Supported runtimes
+
+| RID | Native binary | How it's built |
+|---|---|---|
+| `win-x64` | `libverovio.dll` | `scripts/build-libverovio.ps1` (MSVC, `-A x64`) |
+| `win-arm64` | `libverovio.dll` | `scripts/build-libverovio.ps1 -Rid win-arm64` (MSVC ARM64 toolset, `-A ARM64`; cross-builds from an x64 host) |
+| `linux-x64` | `libverovio.so` | `scripts/build-libverovio-linux.ps1` (containerised CMake) |
+
+The `.dll`/`.so` is a NuGet **native runtime asset** resolved per RID at
+load time. Verovio's SMuFL font/glyph payload (`verovio-data`) ships once
+and is delivered to consumer output via `buildTransitive/Verovio.NET.targets`
+(not as a native asset — see the note in that file for the NETSDK1152
+rationale); the runtime resolves it cross-RID, so the single copy serves
+every platform.
+
+`osx-arm64`, `osx-x64`, and `linux-arm64` are **deferred until demanded** —
+the vendoring path is RID-parametric, so adding one is a build + commit, not
+a code change.
+
 ### What's deferred
 
-- **Multi-RID coverage**: linux-x64, osx-arm64, linux-arm64. Tracked
-  separately; gated on the first cross-platform consumer.
+- **macOS + linux-arm64 RIDs**: `osx-arm64`, `osx-x64`, `linux-arm64`.
+  Gated on the first consumer that needs them.
 - **PDF rendering**: upstream's `c_wrapper.h` doesn't expose
   `vrvToolkit_renderToPDF`. `RenderToPdf` returns
   `Error UnsupportedOutputFormat` pending a wrapper-extension or
@@ -78,10 +100,11 @@ identical outputs trivially attributable.
 
 | Package         | Role                                                                                                |
 | --------------- | --------------------------------------------------------------------------------------------------- |
-| `Verovio.NET`   | The library. Public API + P/Invoke implementation. Ships with `libverovio.dll` vendored for win-x64. |
+| `Verovio.NET`   | The library. Public API + P/Invoke implementation. Ships the native engine vendored for win-x64, win-arm64, and linux-x64. |
 
-Consumers add a single package reference. The native DLL is resolved
-automatically via .NET's `runtimes/<rid>/native` convention.
+Consumers add a single package reference. The native engine is resolved
+automatically via .NET's `runtimes/<rid>/native` convention; the font/glyph
+data is delivered to output via the package's `buildTransitive` targets.
 
 ## Quickstart
 
@@ -136,28 +159,48 @@ pwsh ./run.ps1 -Pack
 Requirements: .NET SDK `10.0.203` (pinned in [`global.json`](global.json)).
 PowerShell 7+ for `run.ps1`.
 
-## Building libverovio.dll
+## Building the native engine
 
-The vendored DLL ships in the NuGet — most consumers never need to build
-it themselves. If you do (security audit, custom upstream version,
-contribution to this repo), see
-[`scripts/build-libverovio.ps1`](scripts/build-libverovio.ps1) and the
-build provenance documented in
-[`src/Verovio.NET/runtimes/win-x64/native/PROVENANCE.md`](src/Verovio.NET/runtimes/win-x64/native/PROVENANCE.md).
+The vendored binaries ship in the NuGet — most consumers never need to
+build them. If you do (security audit, custom upstream version,
+contribution to this repo), the vendor scripts clone the pinned upstream
+tag, run CMake, and copy the result into
+`src/Verovio.NET/runtimes/<rid>/native/`. Build provenance for each RID is
+documented in that RID's `PROVENANCE.md`.
 
-Build requirements:
-- CMake 3.15+
-- Visual Studio 2022 Build Tools with the "Desktop development with C++"
-  workload (MSVC v143 + Windows 10/11 SDK)
-- `git` on PATH for the upstream clone
+### Windows (win-x64 / win-arm64)
 
-Build command:
 ```powershell
-pwsh ./scripts/build-libverovio.ps1
+pwsh ./scripts/build-libverovio.ps1                  # win-x64 (default)
+pwsh ./scripts/build-libverovio.ps1 -Rid win-arm64   # win-arm64
 ```
 
-The script clones the pinned upstream tag, runs CMake + MSBuild, and
-copies the resulting DLL into `src/Verovio.NET/runtimes/win-x64/native/`.
+Requirements:
+- CMake 3.15+
+- Visual Studio 2022 Build Tools with the "Desktop development with C++"
+  workload (MSVC v143 + Windows 11 SDK). For `-Rid win-arm64`, also the
+  **C++ ARM64 build tools** component
+  (`Microsoft.VisualStudio.Component.VC.Tools.ARM64`).
+- `git` on PATH for the upstream clone
+
+Because CMake's Visual Studio generator selects the toolset via `-A`, either
+Windows RID can be produced from either host architecture — one Windows
+machine with both toolsets emits both DLLs (win-arm64 is a cross-build from
+an x64 host, and vice-versa).
+
+### Linux (linux-x64)
+
+```powershell
+pwsh ./scripts/build-libverovio-linux.ps1
+```
+
+Requirements: Docker with BuildKit. The script builds
+[`scripts/Dockerfile.libverovio-linux`](scripts/Dockerfile.libverovio-linux)
+(Debian + CMake + g++), extracts `libverovio.so` via a BuildKit
+`--output`, and copies it into
+`src/Verovio.NET/runtimes/linux-x64/native/`. Without Docker, run the
+equivalent CMake steps in the Dockerfile inside WSL or any Linux box and
+copy the `.so` into that directory.
 
 ## Vendored upstream
 
@@ -166,10 +209,11 @@ copies the resulting DLL into `src/Verovio.NET/runtimes/win-x64/native/`.
 | Upstream        | https://github.com/rism-digital/verovio        |
 | Version pin     | `version-6.2.0`                                |
 | License         | LGPL-3.0-or-later                              |
-| Vendor location | `src/Verovio.NET/runtimes/win-x64/native/`     |
+| Vendor location | `src/Verovio.NET/runtimes/<rid>/native/` (win-x64, win-arm64, linux-x64) |
 
-Bump procedure: edit the version tag in `scripts/build-libverovio.ps1`,
-re-run the vendor script, run the snapshot tests, update the
+Bump procedure: edit the version tag in `scripts/build-libverovio.ps1`
+(and `scripts/Dockerfile.libverovio-linux`'s `VEROVIO_TAG`), re-run the
+vendor script for each RID, run the snapshot tests, update each RID's
 `PROVENANCE.md` row.
 
 ## Layout
@@ -182,14 +226,18 @@ Verovio.NET/
 │   │   ├── Internal/Interop.fs          # DllImport bindings (61/61 c_wrapper functions)
 │   │   ├── Logging.fs                   # VerovioLogging static (process-global toggles)
 │   │   ├── Toolkit.fs                   # public Toolkit class
-│   │   └── runtimes/win-x64/native/
-│   │       ├── libverovio.dll           # vendored binary (built via scripts/)
-│   │       └── PROVENANCE.md
+│   │   ├── build/Verovio.NET.targets    # buildTransitive: delivers verovio-data to consumers
+│   │   └── runtimes/<rid>/native/       # win-x64 + win-arm64 (libverovio.dll), linux-x64 (libverovio.so)
+│   │       ├── libverovio.{dll,so}      # vendored binary (built via scripts/)
+│   │       ├── PROVENANCE.md
+│   │       └── verovio-data/            # SMuFL fonts (win-x64 copy; shipped to consumers via buildTransitive)
 │   └── Verovio.NET.Tests/               # Expecto suite over the public API
 ├── samples/
 │   └── Verovio.NET.Samples.Console/     # multi-domain end-to-end smoke
 ├── scripts/
-│   └── build-libverovio.ps1             # vendor-DLL build (operator-run)
+│   ├── build-libverovio.ps1             # win-x64 / win-arm64 vendor build (operator-run)
+│   ├── build-libverovio-linux.ps1       # linux-x64 vendor build (containerised)
+│   └── Dockerfile.libverovio-linux      # reproducible linux-x64 .so build
 ├── Verovio.NET.slnx
 ├── Directory.Build.props
 ├── Directory.Packages.props
@@ -234,8 +282,8 @@ Issues and pull requests welcome. Please:
 * If you touch the P/Invoke surface in `Internal/Interop.fs`, validate
   against the upstream `tools/c_wrapper.h` signatures — they're the
   authoritative ABI.
-* CI must pass on Windows runners (Linux + macOS runners land when those
-  RIDs ship).
+* CI must pass on Windows + Linux runners (win-x64 + linux-x64 are
+  vendored; macOS runners land when those RIDs ship).
 
 ## License
 

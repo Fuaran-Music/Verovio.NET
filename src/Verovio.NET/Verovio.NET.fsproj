@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <PackageId>Verovio.NET</PackageId>
-    <Description>F# / .NET 10 bindings for the Verovio music engraving engine. Single-package design — public API + native P/Invoke implementation in one NuGet. Ships with libverovio.dll vendored for win-x64; other RIDs added in subsequent phases.</Description>
+    <Description>F# / .NET 10 bindings for the Verovio music engraving engine. Single-package design — public API + native P/Invoke implementation in one NuGet. Ships the native engine vendored for win-x64, win-arm64, and linux-x64; macOS RIDs added on demand.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
@@ -34,19 +34,72 @@
           Pack="true"
           PackagePath="runtimes\win-x64\native\PROVENANCE.md"
           Condition="Exists('runtimes\win-x64\native\PROVENANCE.md')" />
-    <!-- Verovio's font + glyph-bounding-box resources (Bravura, Leland,
-         Leipzig, Petaluma, Gootville, text). Without these on disk,
-         Toolkit.LoadData fails with the "font resources are not
-         available" error. We vendor the upstream `data/` tree as a
-         sibling to libverovio.dll under `verovio-data/`; Toolkit.Create
-         auto-resolves the path from AppContext.BaseDirectory at
-         runtime. Recursive include keeps every subfolder
-         (Bravura/, Gootville/, Leipzig/, Leland/, Petaluma/, text/)
-         in lock-step with upstream. -->
+    <!-- Phase 56 — win-arm64 (cross-compiled DLL) + linux-x64
+         (containerised .so) native binaries. Same runtimes/<rid>/native
+         convention as win-x64; the .NET runtime resolves the matching
+         RID's binary at load time, and Verovio.NET's custom DllImport
+         resolver (Internal/Interop.fs) covers the ProjectReference case.
+         Each binary is a SINGLE native asset, so RID-specific publishes
+         select exactly one and there is no relative-path collision.
+         Condition guards keep the project packable before a given RID's
+         binary has been built + committed. osx-arm64 / osx-x64 /
+         linux-arm64 stay deferred-until-demanded. -->
+    <None Include="runtimes\win-arm64\native\libverovio.dll"
+          Pack="true"
+          PackagePath="runtimes\win-arm64\native\libverovio.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('runtimes\win-arm64\native\libverovio.dll')" />
+    <None Include="runtimes\win-arm64\native\PROVENANCE.md"
+          Pack="true"
+          PackagePath="runtimes\win-arm64\native\PROVENANCE.md"
+          Condition="Exists('runtimes\win-arm64\native\PROVENANCE.md')" />
+    <None Include="runtimes\linux-x64\native\libverovio.so"
+          Pack="true"
+          PackagePath="runtimes\linux-x64\native\libverovio.so"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('runtimes\linux-x64\native\libverovio.so')" />
+    <None Include="runtimes\linux-x64\native\PROVENANCE.md"
+          Pack="true"
+          PackagePath="runtimes\linux-x64\native\PROVENANCE.md"
+          Condition="Exists('runtimes\linux-x64\native\PROVENANCE.md')" />
+  </ItemGroup>
+  <!-- Verovio's font + glyph-bounding-box resources (Bravura, Leland,
+       Leipzig, Petaluma, Gootville, text). Without these on disk,
+       Toolkit.LoadData fails with the "font resources are not available"
+       error. Toolkit.Create auto-resolves them from
+       runtimes/<rid>/native/verovio-data relative to
+       AppContext.BaseDirectory at runtime (the resolver tries the current
+       RID then falls back through the known set — see
+       Toolkit.TryResolveVendoredResourcePath).
+
+       DELIVERY: the data ships ONCE (not per-RID — the files are
+       byte-identical across RIDs at a given upstream tag) and is delivered
+       to consumers via the buildTransitive targets below, NOT as a NuGet
+       native runtime asset. Native-asset delivery flattens the per-font
+       subdirectories and trips NETSDK1152 ("multiple publish output files
+       with the same relative path" — e.g. Bravura/0020.xml vs
+       Gootville/0020.xml) on any RID-specific publish (`dotnet publish -r
+       <rid>`), which is exactly how ScaleMastery deploys. The targets copy
+       preserves the subdirectory structure and runs on every consumer
+       build/publish regardless of RID; the cross-RID resolver finds the
+       single win-x64-located copy on linux/arm64 too.
+
+       This item copies the data into THIS project's own output (and that
+       of ProjectReference consumers — the test + sample projects) under
+       the resolver's path, and packs it under buildTransitive/ for the
+       targets to pick up in PackageReference consumers. -->
+  <ItemGroup>
     <None Include="runtimes\win-x64\native\verovio-data\**\*"
           Pack="true"
-          PackagePath="runtimes\win-x64\native\verovio-data\%(RecursiveDir)%(Filename)%(Extension)"
-          CopyToOutputDirectory="PreserveNewest" />
+          PackagePath="buildTransitive\verovio-data\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
+    <!-- buildTransitive/Verovio.NET.{props,targets} are auto-imported by
+         NuGet into PackageReference consumers (transitively). The targets
+         copies the packaged verovio-data into the consumer's output. -->
+    <None Include="build\Verovio.NET.targets"
+          Pack="true"
+          PackagePath="buildTransitive\Verovio.NET.targets" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
