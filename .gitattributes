@@ -17,6 +17,8 @@
 *.ico   binary
 *.svg   binary
 *.dll   binary
+*.so    binary
+*.dylib binary
 *.exe   binary
 *.pdb   binary
 *.nupkg binary

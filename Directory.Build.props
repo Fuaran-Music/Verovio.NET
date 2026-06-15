@@ -94,9 +94,13 @@
          regardless of RID; the cross-RID resolver finds the single
          win-x64-located copy on linux/arm64 too. Backward-compatible with
          consumers that still supply their own data. linux-x64 libverovio.so
-         vendoring + linux build infra (scripts/Dockerfile.libverovio-linux +
-         build-libverovio-linux.ps1) land here too; the .so binary itself is
-         committed once a Linux build host is available. -->
+         vendored here too (containerised CMake build via
+         scripts/Dockerfile.libverovio-linux + build-libverovio-linux.ps1),
+         runtime-validated at 90/90 Expecto (0 ignored) in a Linux .NET
+         container; win-x64 validated likewise on Windows; win-arm64
+         cross-built + symbol-verified (runtime test on an ARM64 host
+         pending). This is the RID that lets ScaleMastery's image stop
+         compiling Verovio from source. -->
     <Version>0.2.2-alpha</Version>
   </PropertyGroup>
 
