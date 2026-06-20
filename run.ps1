@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
   Verovio.NET entry point: verify (fantomas + build + tests + sample
-  console smoke), with optional pack into ..\local-nuget-feed\.
+  console smoke), with optional pack into ..\..\local-nuget-feed\.
 
 .DESCRIPTION
   Verovio.NET is library-only in v0 (no long-running app). The default
@@ -14,7 +14,7 @@
                                     #           console smoke
     pwsh ./run.ps1 -Pack            # verify, then dotnet pack the three
                                     #           Verovio.NET.* packages into
-                                    #           ..\local-nuget-feed\
+                                    #           ..\..\local-nuget-feed\
 
   Switches stack: -SkipFormat / -SkipBuild / -SkipTests / -SkipSample for
   fast iteration inside the verify mode.
@@ -32,7 +32,7 @@
 .EXAMPLE
   pwsh ./run.ps1 -Pack
 
-  Verify + drop packages into ..\local-nuget-feed\ for inner-loop
+  Verify + drop packages into ..\..\local-nuget-feed\ for inner-loop
   consumption by fuaran-music's Renderer.Engraving (Phase 05+).
 #>
 [CmdletBinding()]
@@ -124,7 +124,7 @@ $sampleProject = "samples/Verovio.NET.Samples.Console/Verovio.NET.Samples.Consol
 $packageProjects = @(
     "src/Verovio.NET/Verovio.NET.fsproj"
 )
-$localFeed = Join-Path (Split-Path $PSScriptRoot -Parent) 'local-nuget-feed'
+$localFeed = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'local-nuget-feed'
 
 # ── Steps ────────────────────────────────────────────────────────────────
 
