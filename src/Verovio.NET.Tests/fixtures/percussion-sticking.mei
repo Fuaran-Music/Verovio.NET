@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="https://music-encoding.org/schema/5.0/mei-all.rng"
+    type="application/xml" schematypens="http://relaxng.org/ns/structure/1.0"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0">
+  <meiHead>
+    <fileDesc>
+      <titleStmt>
+        <title>Sticking (R/L) — Verovio.NET render-spike fixture</title>
+      </titleStmt>
+      <pubStmt/>
+    </fileDesc>
+  </meiHead>
+  <music>
+    <body>
+      <mdiv>
+        <score>
+          <scoreDef>
+            <staffGrp>
+              <staffDef n="1" lines="5" clef.shape="perc" clef.line="3"
+                meter.count="4" meter.unit="4"/>
+            </staffGrp>
+          </scoreDef>
+          <section>
+            <measure n="1" right="end">
+              <staff n="1">
+                <layer n="1">
+                  <note xml:id="s1" pname="c" oct="5" dur="4"/>
+                  <note xml:id="s2" pname="c" oct="5" dur="4"/>
+                  <note xml:id="s3" pname="c" oct="5" dur="4"/>
+                  <note xml:id="s4" pname="c" oct="5" dur="4"/>
+                </layer>
+              </staff>
+              <!-- Sticking rendered via <dir> control events. Verovio 6.2.0
+                   does NOT support the dedicated MEI <sticking> element
+                   ("Unsupported '<sticking>' within <measure>"), so R/L
+                   hand indications are encoded as below-staff <dir>s. -->
+              <dir place="below" startid="#s1">R</dir>
+              <dir place="below" startid="#s2">L</dir>
+              <dir place="below" startid="#s3">R</dir>
+              <dir place="below" startid="#s4">L</dir>
+            </measure>
+          </section>
+        </score>
+      </mdiv>
+    </body>
+  </music>
+</mei>

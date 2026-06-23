@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="https://music-encoding.org/schema/5.0/mei-all.rng"
+    type="application/xml" schematypens="http://relaxng.org/ns/structure/1.0"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0">
+  <meiHead>
+    <fileDesc>
+      <titleStmt>
+        <title>X noteheads — Verovio.NET render-spike fixture</title>
+      </titleStmt>
+      <pubStmt/>
+    </fileDesc>
+  </meiHead>
+  <music>
+    <body>
+      <mdiv>
+        <score>
+          <scoreDef>
+            <staffGrp>
+              <staffDef n="1" lines="5" clef.shape="perc" clef.line="3"
+                meter.count="4" meter.unit="4"/>
+            </staffGrp>
+          </scoreDef>
+          <section>
+            <measure n="1" right="end">
+              <staff n="1">
+                <layer n="1">
+                  <note pname="c" oct="5" dur="4" head.shape="x"/>
+                  <note pname="c" oct="5" dur="4" head.shape="x"/>
+                  <note pname="c" oct="5" dur="4" head.shape="x"/>
+                  <note pname="c" oct="5" dur="4" head.shape="x"/>
+                </layer>
+              </staff>
+            </measure>
+          </section>
+        </score>
+      </mdiv>
+    </body>
+  </music>
+</mei>
