@@ -697,6 +697,66 @@ let private disposalTests =
                   use _toolkit = Toolkit.Create()
                   ()) ]
 
+let private percussionRenderTests =
+    // Standing render coverage for the five percussion features cleared by
+    // the render spike (docs/PERCUSSION-RENDER-SPIKE.md). Each fixture is
+    // input-MEI-driven and renders with RenderOptions.Default — no Verovio
+    // option knob is load-bearing, so there is no typed percussion API to
+    // exercise here; these assert the MEI→SVG contract the spike pinned.
+    //
+    // Discriminating SVG markers (SMuFL glyph refs take the deterministic
+    // form `xlink:href="#E069-<seed-suffix>"`, so we key on the `#E069`
+    // prefix, not the full minted id):
+    //   * percussion clef → #E069 (unpitchedPercussionClef1) + class="clef"
+    //   * x noteheads     → #E0A9 (noteheadXBlack)
+    //   * flam/drag grace → cue-sized class="flag" + #E240/#E242 (no
+    //                       `grace`/`graceGrp` class exists in 6.2.0 — L2)
+    //   * buzz tremolo    → class="bTrem" + #E22A (buzzRoll) / #E222 (tremolo3)
+    //   * sticking (R/L)  → class="dir" + R/L tspan text (MEI <sticking> is
+    //                       unsupported in 6.2.0 — L1 — so <dir> is canonical)
+    let renderFixture (name: string) : string =
+        use toolkit = Toolkit.Create()
+        toolkit.LoadDataOrThrow(readFixture name)
+        toolkit.RenderToSvgOrThrow(1)
+
+    testList
+        "Toolkit percussion render coverage"
+        [ skipUnlessNative "Percussion clef renders the unpitched-percussion clef glyph (#E069)" (fun () ->
+              let svg = renderFixture "percussion-clef.mei"
+              Expect.stringContains svg "class=\"clef\"" "a clef group is emitted"
+              Expect.stringContains svg "#E069" "percussion clef glyph (unpitchedPercussionClef1)")
+
+          skipUnlessNative "X noteheads render the noteheadXBlack glyph (#E0A9)" (fun () ->
+              let svg = renderFixture "percussion-xnotehead.mei"
+              Expect.stringContains svg "#E0A9" "x-shaped notehead glyph (noteheadXBlack)"
+              Expect.stringContains svg "class=\"notehead\"" "notehead groups are emitted")
+
+          skipUnlessNative "Flam/drag grace notes render cue-sized flags (#E240/#E242)" (fun () ->
+              let svg = renderFixture "percussion-grace-flam.mei"
+              // L2: Verovio 6.2.0 emits no `grace`/`graceGrp` class — the
+              // discriminating signal is the cue-sized flag glyphs (the
+              // fixture's main strokes are quarter notes, so any flag is a
+              // grace note).
+              Expect.stringContains svg "class=\"flag\"" "grace notes carry flags"
+
+              Expect.isTrue
+                  (svg.Contains "#E240" || svg.Contains "#E242")
+                  "cue flag glyph (flag8thUp/flag16thUp) present")
+
+          skipUnlessNative "Buzz + measured tremolo render bTrem with buzzRoll (#E22A) and tremolo3 (#E222)" (fun () ->
+              let svg = renderFixture "percussion-buzz-tremolo.mei"
+              Expect.stringContains svg "class=\"bTrem\"" "bTrem groups are emitted"
+              Expect.stringContains svg "#E22A" "buzz-roll glyph (buzzRoll) for stem.mod=z"
+              Expect.stringContains svg "#E222" "measured-roll glyph (tremolo3) for stem.mod=3slash")
+
+          skipUnlessNative "Sticking renders R/L text via <dir> (MEI <sticking> unsupported)" (fun () ->
+              let svg = renderFixture "percussion-sticking.mei"
+              // L1: the dedicated MEI <sticking> element is unsupported in
+              // libverovio 6.2.0; R/L are encoded as below-staff <dir>s.
+              Expect.stringContains svg "class=\"dir\"" "dir groups are emitted for sticking"
+              Expect.stringContains svg ">R<" "right-hand sticking text rendered"
+              Expect.stringContains svg ">L<" "left-hand sticking text rendered") ]
+
 [<Tests>]
 let allVerovioTests =
     testList
@@ -714,4 +774,5 @@ let allVerovioTests =
           editorTests
           validationTests
           loggingTests
-          disposalTests ]
+          disposalTests
+          percussionRenderTests ]

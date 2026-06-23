@@ -96,6 +96,39 @@ a code change.
   model lands when a curriculum / pedagogy consumer drives the
   requirements.
 
+## Percussion rendering
+
+Percussion notation is **fully input-MEI-driven** — every feature below renders
+through the normal `LoadData` → `RenderToSvg` path with `RenderOptions.Default`.
+**No percussion-specific API or option knob is required**: feed the MEI shape in
+the left column, rely on the SVG marker in the right. (Render-validated against
+libverovio **6.2.0**; full evidence in
+[`docs/PERCUSSION-RENDER-SPIKE.md`](docs/PERCUSSION-RENDER-SPIKE.md).)
+
+| Feature | Canonical MEI shape | SVG you can rely on |
+|---|---|---|
+| Percussion clef | `<staffDef clef.shape="perc" clef.line="3">` | `<g class="clef">` with `<use xlink:href="#E069…">` (`unpitchedPercussionClef1`) |
+| X noteheads | `<note head.shape="x" …>` | `class="notehead"` → `<use xlink:href="#E0A9…">` (`noteheadXBlack`) |
+| Flam / drag grace | `<note grace="acc" …>` before the main `<note>` — one grace = flam, two = drag | cue-sized `class="flag"` with `#E240` (`flag8thUp`) / `#E242` (`flag16thUp`) |
+| Buzz / measured tremolo | `<bTrem><note stem.mod="z">` (buzz) · `stem.mod="3slash"` (measured) | `<g class="bTrem">` with `#E22A` (`buzzRoll`) / `#E222` (`tremolo3`) |
+| Sticking (R / L) | `<dir place="below" startid="#note">R</dir>` | `<g class="dir">` with `<tspan>R</tspan>` / `<tspan>L</tspan>` |
+
+SMuFL glyph refs are emitted as `xlink:href="#E069-<seed-suffix>"` (the suffix is
+the deterministic xml:id-seed fragment), so match on the `#E069` **prefix**, not
+the full minted id.
+
+**Engine limitations (libverovio 6.2.0):**
+
+- **MEI `<sticking>` is unsupported** — it is dropped with
+  `Unsupported '<sticking>' within <measure>`. Encode R/L hand indications as
+  below-staff `<dir>` control events (as above) until a future engine bump adds
+  support; the encoding swap needs no adapter change.
+- **Grace notes carry no `grace`/`graceGrp` class** — they render as cue-sized
+  `class="note"` groups. Key on the cue-sized `class="flag"` glyphs, not a grace
+  class.
+- **The acciaccatura slash is a drawn `<path>`, not a glyph** — there is no
+  `graceNoteSlash` SMuFL `<use>` to assert on.
+
 ## Package
 
 | Package         | Role                                                                                                |

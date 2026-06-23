@@ -20,6 +20,12 @@
     <None Include="fixtures\c-major.pae">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Percussion render-spike fixtures (Wave 17 enablement). See
+         docs/PERCUSSION-RENDER-SPIKE.md for the per-feature MEI→SVG
+         contract these exercise. -->
+    <None Include="fixtures\percussion-*.mei">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Verovio.NET\Verovio.NET.fsproj" />
