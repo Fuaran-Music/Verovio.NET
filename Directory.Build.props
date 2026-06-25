@@ -89,7 +89,8 @@
          flattened the per-font subdirectories and tripped NETSDK1152
          ("multiple publish output files with the same relative path",
          e.g. Bravura/0020.xml vs Gootville/0020.xml) on any
-         `dotnet publish -r <rid>` — the exact shape ScaleMastery deploys.
+         `dotnet publish -r <rid>` — the exact shape RID-specific
+         containerized deployments take.
          The targets copy preserves structure and runs on every build/publish
          regardless of RID; the cross-RID resolver finds the single
          win-x64-located copy on linux/arm64 too. Backward-compatible with
@@ -100,8 +101,8 @@
          container; win-x64 validated likewise on Windows; win-arm64
          cross-built, symbol-verified, AND runtime-validated 90/90 on an
          ARM64 Windows host. All three RIDs runtime-validated. This is the
-         RID set that lets ScaleMastery's image stop compiling Verovio from
-         source and ARM64 Windows dev hosts render natively. -->
+         RID set that lets a consumer's container image stop compiling Verovio
+         from source and ARM64 Windows dev hosts render natively. -->
     <Version>0.2.2-alpha</Version>
   </PropertyGroup>
 

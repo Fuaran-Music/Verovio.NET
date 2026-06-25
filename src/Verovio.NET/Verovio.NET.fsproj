@@ -79,7 +79,8 @@
        subdirectories and trips NETSDK1152 ("multiple publish output files
        with the same relative path" — e.g. Bravura/0020.xml vs
        Gootville/0020.xml) on any RID-specific publish (`dotnet publish -r
-       <rid>`), which is exactly how ScaleMastery deploys. The targets copy
+       <rid>`), which is exactly how RID-specific containerized deployments
+       work. The targets copy
        preserves the subdirectory structure and runs on every consumer
        build/publish regardless of RID; the cross-RID resolver finds the
        single win-x64-located copy on linux/arm64 too.

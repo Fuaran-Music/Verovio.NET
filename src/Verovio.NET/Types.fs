@@ -170,7 +170,7 @@ type LoadOptions =
 /// `RenderOptions.Default`.
 ///
 /// Verovio's toolkit accepts a wider option surface; this record carries
-/// the subset that ScaleMastery-class consumers need at MVP. Future
+/// the subset that typical consumers need at MVP. Future
 /// additions are additive record fields with `Default` fallbacks; no
 /// breaking change to the public signature is required.
 [<Struct>]

@@ -50,9 +50,9 @@ $tk.Dispose()
 
 ## Context
 
-ScaleMastery's SSR routes expect ~99% cache hit rate after warmup; the
+Typical server-rendered consumers expect ~99% cache hit rate after warmup; the
 native render speed is bounded only by cache misses and worker-pool
-saturation under burst. Sight-reading.ai's per-keystroke-render UX will
+saturation under burst. A keystroke-driven, per-edit-render UX will
 likely route to a client-side Fable backend (separate NuGet) rather
 than round-tripping to the server for sub-100ms feel. Both consumption
 patterns sit well inside the expected envelope above.

@@ -9,7 +9,7 @@ Order: newest first.
 ## Per-`Doc` xml:id seed for same-thread multi-Toolkit determinism
 
 **Filed**: not yet — held during Phase 49 close-out (2026-06-07).
-**Trigger to revisit**: when a real consumer (likely sight-reading.ai's per-keystroke render path, or any server pooling toolkits behind a request handler) actually wants per-Toolkit deterministic IDs without the reseed-at-every-boundary workaround. Or sooner if we want to clear the workaround on aesthetic grounds.
+**Trigger to revisit**: when a real consumer (likely a per-keystroke render path, or any server pooling toolkits behind a request handler) actually wants per-Toolkit deterministic IDs without the reseed-at-every-boundary workaround. Or sooner if we want to clear the workaround on aesthetic grounds.
 
 ### Symptom that motivates it
 
@@ -55,7 +55,7 @@ Rough scope: ~50–150 lines internal plumbing, one read-site to refactor.
 
 ### Filing playbook
 
-Issue text drafted at the end of this file. File from a personal GitHub account (the `Fuaran-Music` org is private until the first consumer-product launch per the workspace OSS publication boundary). Don't link to `Verovio.NET` from the issue while it's private — describe the binding scenario in prose only. Once `Verovio.NET` is public, edit the issue to add the link.
+Issue text drafted at the end of this file. Describe the binding scenario in prose; link to `Verovio.NET` from the issue once it suits.
 
 If upstream signals "yes, PR welcome" within a couple of weeks, the work item becomes a Verovio.NET maintenance task; if not, drop and leave the workaround in place.
 
